@@ -285,7 +285,7 @@
          }
  
          if dhead in exclude_dhead:
-             return (None, 0)
+             return []
  
          fb_qty = 2 if carrier_type == "Dual Carrier" else 1
          return {
@@ -352,56 +352,7 @@
  
          qty = math.ceil(qty * 2) / 2
          return qty
- 
-     def _get_center_tube_id(self):
-         return {
-                 "4340 Black bar - 50mm Diameter": "ID50",
-                 "4140 Bright bar - 50mm": "ID50",
-                 "4140 Black bar - 70mm": "ID70",
-                 "4340 Black bar - 70mm": "ID70",
-                 "4340 Black bar - 90mm": "ID90",
-                 "4140 Bright bar - 90mm": "ID90",
-                 "Hollow bar - OD70 ID40": "ID70",
-                 "Hollow bar - OD75 ID50": "ID75",
-                 "Hollow bar - OD75 ID55": "ID75",
-                 "Hollow bar - OD85 ID70": "ID85",
-                 "Hollow bar - OD90 ID60": "ID90",
-                 "Hollow Bar - OD90 ID65": "ID90",
-                 "hollow bar - OD90 ID70": "ID90",
-                 "Hollow Bar - OD100 ID65mm": "ID100",
-                 "Hollow Bar - OD100mm ID55mm": "ID100",
-                 "Hollow Bar - OD100mm ID75mm": "ID100",
-                 "Hollow Bar - OD100mm ID80mm": "ID100",
-                 "Hollow Bar - OD110 ID70": "ID110",
-                 "Hollow Bar - OD128mm WT 11.5mm": "ID128",
-                 "Hollow Bar - OD150mm ID120mm": "ID150",
-                 "Hollow Bar - OD152mm WT 26mm": "ID152",
-                 "Hollow Bar - OD152mm WT 33.5mm": "ID152",
-                 "Hollow Bar - OD168mm WT 21.5mm": "ID168",
-                 "Hollow Bar - OD168mm WT 29mm": "ID168",
-                 "Hollow Bar - OD170mm ID140mm": "ID170",
-                 "Hollow Bar - OD180 ID150": "ID180",
-                 "Hollow Bar - OD200 ID150": "ID200",
-                 "Pipe - OD219mm WT 25mm": "ID219",
-                 "Pipe - OD273mm WT14": "ID273",
-                 "Pipe - OD273mm WT 25mm": "ID273",
-                 "Pipe - OD273mm WT 32mm": "ID273",
-                 "Pipe - OD323mm WT25mm": "ID323",
-                 "Pipe - OD323mm WT30mm": "ID323",
-                 "Pipe - OD356 ID306": "ID356",
-                 "Pipe - OD457mm T35mm": "ID457",
-                 "Pipe - OD457mm T25mm": "ID457",
-                 "Pipe - OD101mm WT4.0mm": "ID101",
-                 "Pipe - OD114mm WT6.0mm": "ID114",
-                 "Pipe - OD114mm WT8.56mm": "ID114",
-                 "Pipe - OD168mm WT11mm": "ID168",
-                 "Pipe - OD219mm WT12.7mm": "ID219",
-                 "Pipe - OD273mm WT12.7mm": "ID273",
-                 "Pipe - OD323mm WT12.7mm": "ID323",
-                 "Pipe - OD355mm WT12.7mm": "ID355",
-                 "Pipe - OD457mm WT15.9mm": "ID457",
-             }
- 
+
      def _get_non_stock_lead_carrier_flight(self, auger_type, carrier_type, diameter, center_tube, non_lead_flight, non_carrier_flight, rotation, flighted_length, carrier_qty):
          """
          Returns a list of tuples (flight_string, quantity) for non-stock lead and carrier flights.
@@ -425,8 +376,14 @@
              od_value = f"OD{diameter - 20}" if diameter < 1500 else f"OD{diameter - 30}"
  
              # Step 2: ID based on center_tube table
-             id_map = self._get_center_tube_id()
-             id_value = id_map.get(center_tube, "")
+             id_value = ""
+             od_match = re.search(r'OD(\d+)', center_tube)
+             mm_match = re.search(r'-\s*(\d+)', center_tube)
+ 
+             if od_match:
+                 id_value = int(od_match.group(1))
+             if mm_match:
+                 id_value = int(mm_match.group(1))
  
              # Setp 6: Rotation
              f_rotation = "RH" if rotation == 'Right Hand Rotation' else "LH"
@@ -719,14 +676,14 @@
  
      def _get_teeth_blade(self, diameter, teeth, pilot):
          pilot = 'Auger Pilot - Hex Auger Torque Fishtail' if pilot == 'Hex Auger Torque Fishtail Pilot' else 'Blade Auger Fishtail Pilot'
-         pilot_supp = 'Pilot Support - Hex' if pilot == 'Hex Auger Torque Fishtail Pilot' else 'Pipe - OD101mm WT4.0mm'
+         pilot_supp = ('Pilot Support - Hex', 1) if pilot == 'Hex Auger Torque Fishtail Pilot' else ('Pipe - OD101mm WT4.0mm', 0.25)
          end_cap = ('End Cap - Suit Hex Pilot Support', 1) if pilot_supp == 'Pilot Support - Hex' else (None, 0)
          if diameter == 300:
              return [
                  ('300mm Hardfaced Blade Teeth', 2),
                  ('300mm Blade Holder', 2), 
                  (pilot, 1),
-                 (pilot_supp, 1),
+                 pilot_supp,
                  end_cap
              ]
          elif diameter == 400:
@@ -734,7 +691,7 @@
                  ('400mm Hardfaced Blade Teeth', 2),
                  ('400mm Blade Holder', 2), 
                  (pilot, 1),
-                 (pilot_supp, 1),
+                 pilot_supp,
                  end_cap
              ]
          elif diameter == 450:
@@ -742,7 +699,7 @@
                  ('450mm Hardfaced Blade Teeth', 2),
                  ('450mm Blade Holder', 2), 
                  (pilot, 1),
-                 (pilot_supp, 1),
+                 pilot_supp,
                  end_cap
              ]
          else:
