@@ -31,17 +31,17 @@
             """
                 return: formatted permanent casing string
             """
-            od = ""
-            wall = ""
+            od = 0
+            wall = 0
 
             od_match = re.search(r'(\d+)\s*mm', diameter, re.IGNORECASE)
             wt_match = re.search(r'(\d+)\s*mm', w_thickness, re.IGNORECASE)
 
             if od_match:
-                od = str(od_match.group(1))
+                od = int(od_match.group(1))
             if wt_match:
-                wall = str(wt_match.group(1))
-
+                wall = int(wt_match.group(1))
+            od = od + ( 2 * wall)
             return f"Permanent Casing - OD{od} WT{wall}"
 
         permanent_casing_p_name = _permanent_casing_combination(diameter, w_thickness)
