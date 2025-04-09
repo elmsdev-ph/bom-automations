@@ -1,3 +1,117 @@
+    def _create_pile_casing(self, product):
+        """ Create a BOM automation for pile casing components """
+        if product.product_tmpl_id.name != 'Pile Casing Stock':
+            return
+
+        reference = product.display_name
+        components = self._get_pile_casing_components(product)
+        if not components:
+            return
+
+        self._create_bom_components(product, reference, components)
+
+    def _get_pile_casing_components(self, product):
+        """
+            param: product_template_external_attribute_value_ids; we retrieve all attribute values excluding N/A.
+            return: a list of items & qty for pile casing component.
+        """
+        # attributes = {attr.attribute_id.name: attr.name for attr in product.product_template_attribute_value_ids}
+        attributes = {attr.attribute_id.name: attr.name for attr in product.product_template_external_attribute_value_ids}
+        casing_type = attributes.get('Casing Type', '')
+        diameter = attributes.get('Inside Diameter', '')
+        w_thickness = attributes.get('Wall Thickness', '')
+        d_band = attributes.get('Drive Band', '')
+        d_band_type = attributes.get('Drive Band Type', '')
+        lock_type = attributes.get('Lock Type', '')
+        s_ring = attributes.get('Stiffening Ring', '')
+        customization = attributes.get('Customization', '')
+        missing_attr = attributes.get('Not Available Casing?', '')
+
+        def _permanent_casing_combination(diameter, w_thickness):
+            """
+                return: formatted permanent casing string
+            """
+            od = ""
+            wall = ""
+
+            od_match = re.search(r'(\d+)\s*mm', diameter, re.IGNORECASE)
+            wt_match = re.search(r'(\d+)\s*mm', w_thickness, re.IGNORECASE)
+
+            if od_match:
+                od = str(od_match.group(1))
+            if wt_match:
+                wall = str(wt_match.group(1))
+
+            return f"Permanent Casing - OD{od} WT{wall}"
+
+        permanent_casing_p_name = _permanent_casing_combination(diameter, w_thickness)
+        product_exist = self.env['product.template'].search([('name', '=', permanent_casing_p_name)], limit=1)
+        # Attribute values combination for profiling
+        wt = f"{w_thickness}" if w_thickness else ""
+        db = f", {d_band}," if d_band else ""
+        dbt = f"{d_band_type}," if d_band_type else ""
+        lt = f"{lock_type}," if lock_type else ""
+        sr = f"{s_ring}," if s_ring else ""
+        od = "" if w_thickness else ""
+        od_match = re.search(r'(\d+)\s*mm', diameter, re.IGNORECASE)
+        od = str(od_match.group(1)) if od_match else ""
+
+        profiling_name = f"Profiling - Pile Casing Stock {od} Inside Diameter x {wt} {db} {dbt} {lt} {sr} {customization}"
+        error_message = ValidationError(
+            f"Oops! The '{permanent_casing_p_name}' is not available.\n"
+            "Please select the available casing attributes to proceed with BOM creation."
+        )
+        if casing_type in ['Segmental Intermediate', 'Segmental Shoe', 'Driver'] and not missing_attr and len(product_exist) == 0:
+            raise error_message
+        else:
+            if casing_type == 'Segmental Intermediate':
+                if product_exist:
+                    return [(permanent_casing_p_name, 3)]
+                else:
+                    return self._get_missing_casing_components(missing_attr, permanent_casing_p_name, profiling_name)
+
+            elif casing_type == 'Segmental Shoe':
+                if product_exist:
+                    return [
+                        (permanent_casing_p_name, 3),
+                        ('BFZ318 - Weld on Casing teeth - BETEK', 6)
+                    ]
+                else:
+                    return self._get_missing_casing_components(missing_attr, permanent_casing_p_name, profiling_name)
+
+            elif casing_type == 'Driver':
+                if product_exist:
+                    return [
+                        (permanent_casing_p_name, 3),
+                        (profiling_name, 1)
+                    ]
+                else:
+                    return self._get_missing_casing_components(missing_attr, permanent_casing_p_name, profiling_name)
+            else:
+                return []
+
+    def _get_missing_casing_components(self, attr, permanent_casing_p_name, profiling_name):
+        """
+            Return a list of casing items that are not available.
+        """
+        casing = permanent_casing_p_name
+        profiling = profiling_name
+        if attr == 'Permanent Casing - Stock':
+            return [
+                (casing, 3),
+                (profiling, 1)
+            ]
+        elif attr == 'Permanent Casing - Non-Stocked':
+            return [
+                (f'{casing} - Non-Stocked', 3),
+                (profiling, 1)
+            ]
+        else:
+            return [
+                (profiling, 1)
+            ]
+
+    
     def _create_bored_pile(self, product):
          """
          Create a BOM component for Bored Pile Auger
