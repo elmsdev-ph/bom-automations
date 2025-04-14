@@ -1,3 +1,4 @@
+
     def _create_pile_casing(self, product):
         """ Create a BOM automation for pile casing components """
         if product.product_tmpl_id.name != 'Pile Casing Stock':
@@ -5,6 +6,7 @@
 
         reference = product.display_name
         components = self._get_pile_casing_components(product)
+
         if not components:
             return
 
@@ -20,10 +22,14 @@
         casing_type = attributes.get('Casing Type', '')
         diameter = attributes.get('Inside Diameter', '')
         w_thickness = attributes.get('Wall Thickness', '')
+        c_length = attributes.get('Casing Length', '')
         d_band = attributes.get('Drive Band', '')
         d_band_type = attributes.get('Drive Band Type', '')
         lock_type = attributes.get('Lock Type', '')
         s_ring = attributes.get('Stiffening Ring', '')
+        left_holes = attributes.get('Lift Holes', '')
+        teeth = attributes.get('Teeth', '')
+        no_of_teeth = attributes.get('No. of Teeth', '')
         customization = attributes.get('Customization', '')
         missing_attr = attributes.get('Not Available Casing?', '')
 
@@ -44,74 +50,133 @@
             od = od + ( 2 * wall)
             return f"Permanent Casing - OD{od} WT{wall}"
 
-        permanent_casing_p_name = _permanent_casing_combination(diameter, w_thickness)
-        product_exist = self.env['product.template'].search([('name', '=', permanent_casing_p_name)], limit=1)
+        permanent_casing = _permanent_casing_combination(diameter, w_thickness)
+        product_exist = self.env['product.template'].search([('name', '=', permanent_casing)], limit=1)
         # Attribute values combination for profiling
-        wt = f"{w_thickness}" if w_thickness else ""
-        db = f", {d_band}," if d_band else ""
-        dbt = f"{d_band_type}," if d_band_type else ""
-        lt = f"{lock_type}," if lock_type else ""
-        sr = f"{s_ring}," if s_ring else ""
-        od = "" if w_thickness else ""
-        od_match = re.search(r'(\d+)\s*mm', diameter, re.IGNORECASE)
+        od_match = re.search(r'(\d+)\s*mm', diameter or "", re.IGNORECASE)
         od = str(od_match.group(1)) if od_match else ""
+        # Build description parts
+        parts = [f"{od} Inside Diameter"] if od else []
+        if w_thickness:
+            parts.append(f"{w_thickness}mm Wall Thickness")
+        if d_band:
+            parts.append(f"{d_band}")
+        if d_band_type:
+            parts.append(f"{d_band_type}")
+        if lock_type:
+            parts.append(f"{lock_type}")
+        if s_ring:
+            parts.append(f"{s_ring}")
+        if customization:
+            parts.append(f"{customization}")
 
-        profiling_name = f"Profiling - Pile Casing Stock {od} Inside Diameter x {wt} {db} {dbt} {lt} {sr} {customization}"
+        profiling = f"Profiling - Pile Casing Stock {', '.join(parts)}"
         error_message = ValidationError(
-            f"Oops! The '{permanent_casing_p_name}' is not available.\n"
+            f"Oops! The '{permanent_casing}' is not available.\n"
             "Please select the available casing attributes to proceed with BOM creation."
         )
-        if casing_type in ['Segmental Intermediate', 'Segmental Shoe', 'Driver'] and not missing_attr and len(product_exist) == 0:
+        if casing_type in ['Standard', 'Segmental'] and not missing_attr and len(product_exist) == 0:
             raise error_message
         else:
-            if casing_type == 'Segmental Intermediate':
-                if product_exist:
-                    return [(permanent_casing_p_name, 3)]
-                else:
-                    return self._get_missing_casing_components(missing_attr, permanent_casing_p_name, profiling_name)
-
-            elif casing_type == 'Segmental Shoe':
-                if product_exist:
-                    return [
-                        (permanent_casing_p_name, 3),
-                        ('BFZ318 - Weld on Casing teeth - BETEK', 6)
-                    ]
-                else:
-                    return self._get_missing_casing_components(missing_attr, permanent_casing_p_name, profiling_name)
-
-            elif casing_type == 'Driver':
-                if product_exist:
-                    return [
-                        (permanent_casing_p_name, 3),
-                        (profiling_name, 1)
-                    ]
-                else:
-                    return self._get_missing_casing_components(missing_attr, permanent_casing_p_name, profiling_name)
+            if product_exist:
+                return self._get_casing_component(True, casing_type, diameter, w_thickness, c_length, d_band, d_band_type, teeth, no_of_teeth, permanent_casing, profiling, missing_attr)
             else:
-                return []
+                return self._get_casing_component(False, casing_type, diameter, w_thickness, c_length, d_band, d_band_type, teeth, no_of_teeth, permanent_casing, profiling, missing_attr)
 
-    def _get_missing_casing_components(self, attr, permanent_casing_p_name, profiling_name):
+    def _get_casing_component(self, exist, casing_type, diameter, w_thickness, c_length, d_band, d_band_type, teeth, no_of_teeth, permanent_casing, profiling, missing_attr):
+        # Extract numbers of attribute values
+        casing_match = re.search(r"\d+\.?\d*", c_length)
+        no_teeth_match = re.search(r"\d+\.?\d*", no_of_teeth)
+        inside_dia = float(re.search(r"\d+\.?\d*", diameter).group())
+        wall_thickness = float(re.search(r"\d+\.?\d*", w_thickness).group())
+        flat_bar_thickness = float(re.search(r"x(\d+)t", d_band).group(1))
+        dband_with_thickness = re.search(r"(\d+)x(\d+)t", d_band)
+
+        db_width = int(dband_with_thickness.group(1)) if dband_with_thickness else 0
+        db_thickness = int(dband_with_thickness.group(2)) if dband_with_thickness else 0
+
+        # Calculate the qty (meter) of the casing, Teeth, and Drive Band
+        total_id_aligned_db_mm = (inside_dia + flat_bar_thickness) * math.pi
+        ia_drive_band_mm_qty = round(total_id_aligned_db_mm / 1000, 2)
+
+        total_overlapped_db_mm = (inside_dia + (wall_thickness * 2) + flat_bar_thickness + 6) * math.pi
+        o_drive_band_mm_qty = round(total_overlapped_db_mm / 1000, 2)
+
+        casing_qty = float(casing_match.group()) if casing_match else 0
+        teeth_qty = int(no_teeth_match.group()) if no_teeth_match else 0
+        drive_qty = ia_drive_band_mm_qty if d_band_type == 'ID Aligned Drive Band' else o_drive_band_mm_qty
+
+        drive_band_combination = f"Flat Bar - {db_width}mm x {db_thickness}mm"
+
+        if exist:
+            if casing_type == 'Standard':
+                casing = [(permanent_casing, casing_qty)]
+                if teeth:
+                    casing.extend([
+                            ('BFZ318 - Weld on Casing teeth - BETEK', teeth_qty)
+                        ])
+                if d_band:
+                    casing.extend([
+                        (drive_band_combination, drive_qty)
+                    ])
+                return casing
+    
+            else:
+                segmental = [(permanent_casing, casing_qty)]
+                if teeth:
+                    segmental.extend([
+                            ('BFZ318 - Weld on Casing teeth - BETEK', teeth_qty)
+                        ])
+                segmental.extend([(profiling, 1)])
+    
+                return segmental
+        else:
+            return self._get_missing_casing_components(missing_attr, permanent_casing, casing_qty, profiling, teeth, teeth_qty, d_band, drive_band_combination, drive_qty)
+
+    def _get_missing_casing_components(self, attr, permanent_casing, casing_qty, profiling, teeth, teeth_qty, d_band, drive_band_combination, drive_qty):
         """
             Return a list of casing items that are not available.
         """
-        casing = permanent_casing_p_name
-        profiling = profiling_name
         if attr == 'Permanent Casing - Stock':
-            return [
-                (casing, 3),
-                (profiling, 1)
-            ]
+            component = [(permanent_casing, casing_qty)]
+            if teeth:
+                component.extend([
+                        ('BFZ318 - Weld on Casing teeth - BETEK', teeth_qty)
+                    ])
+            if d_band:
+                component.extend([
+                    (drive_band_combination, drive_qty)
+                ])
+            component.extend([(profiling, 1)])
+            return component
         elif attr == 'Permanent Casing - Non-Stocked':
-            return [
-                (f'{casing} - Non-Stocked', 3),
-                (profiling, 1)
+            component = [
+                (f'{permanent_casing} - Non-Stocked', casing_qty),
             ]
+            if teeth:
+                component.extend([
+                        ('BFZ318 - Weld on Casing teeth - BETEK', teeth_qty)
+                    ])
+            if d_band:
+                component.extend([
+                    (drive_band_combination, drive_qty)
+                ])
+            component.extend([(profiling, 1)])
+            return component
         else:
-            return [
+            component = [
                 (profiling, 1)
             ]
+            if teeth:
+                component.extend([
+                        ('BFZ318 - Weld on Casing teeth - BETEK', teeth_qty)
+                    ])
+            if d_band:
+                component.extend([
+                    (drive_band_combination, drive_qty)
+                ])
+            return component
 
-    
     def _create_bored_pile(self, product):
          """
          Create a BOM component for Bored Pile Auger
