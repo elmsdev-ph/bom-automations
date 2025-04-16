@@ -15,7 +15,7 @@ class ProductProduct(models.Model):
     def create(self, vals_list):
         products = super().create(vals_list)
         for product in products:
-            self._create_bom_for_cfa_auger(product)
+            self._create_bom_for_extension_bar(product)
             self._create_bom_for_high_tensile_adapter(product)
         return products
 
@@ -27,10 +27,11 @@ class ProductProduct(models.Model):
             return
 
         components = self._get_high_tensile_adapter_components(product)
+        # raise ValidationError(f"tensile.. {components}")
         reference = product.display_name
         self._create_bom_components(product, reference, components)
 
-    def _get_high_tensile_adapter_components(self):
+    def _get_high_tensile_adapter_components(self, product):
         p_name = product.product_tmpl_id.name
         attributes = {attr.attribute_id.name: attr.name for attr in product.product_template_attribute_value_ids}
         from_drive = attributes.get('From', '')
@@ -41,21 +42,23 @@ class ProductProduct(models.Model):
         customization = attributes.get('Customization', '')
         components = []
 
-        _drives = self._get_high_tensile_drive_head(from_drive, to_drive, type)
-        _base_plate = self._get_eb_base_plate(drive_head)
-        stiff_ring = "" #TODO: create a function that returns a list of items
+        _drive1, _drive2 = self._get_high_tensile_drive_head(from_drive, to_drive, type)
+        _base_plate = self._get_eb_base_plate(from_drive)
+        _stiff_ring = self._get_stiffening_ring_for_tensile_adapter(from_drive, _drive2, type)
         liftlug = re.match(r'^\s*(\d+(?:\.\d+)?)', lift_lug)
-        lift_lug_qty = int(liftlug.group(1)) if _lift_lug else 0.0
+        lift_lug_qty = int(liftlug.group(1)) if liftlug else 0.0
         _liftlug = (f'Lift lug', lift_lug_qty) 
         _reducer = (reducer, 1)
-        components = [
-            _drives,
-            _base_plate,
-            _reducer,
-            _stiff_ring,
-            _liftlug
+        _none = (None, 0)
+        lst = [
+            _drive1,
+            _drive2,
+            _base_plate or _none,
+            _reducer or _none,
+            _stiff_ring or _none,
+            _liftlug or _none
         ]
-
+        components = [x for x in lst if x[0]]
         return components
 
     def _create_bom_for_extension_bar(self, product):
@@ -66,6 +69,7 @@ class ProductProduct(models.Model):
             return
 
         components = self._get_extension_bar_components(product)
+        # raise ValidationError(f"bar.. {components}")
         reference = product.display_name
         self._create_bom_components(product, reference, components)
 
@@ -81,9 +85,9 @@ class ProductProduct(models.Model):
         customization = attributes.get('Customization', '')
         components = []
 
-        if type == 'Telescopic Inner' and drive_head in inner_outer_items:
+        if type == 'Telescopic Inner':
             components = self._get_eb_telescopic_inner_components(type, drive_head, length, center_tube, stubb, lift_lug)
-        elif type == 'Telescopic Outer' and drive_head in inner_outer_items:
+        elif type == 'Telescopic Outer':
             components = self._get_eb_telescopic_outer_components(type, drive_head, length, center_tube, stubb, lift_lug)
         elif type == 'Rigid':
             components = self._get_eb_rigid_components(type, drive_head, length, center_tube, stubb, lift_lug)
@@ -91,7 +95,7 @@ class ProductProduct(models.Model):
         return components
 
     def _get_eb_telescopic_inner_components(self, type, drive_head, length, c_tube, stubb, lift_lug):
-        center_tube = self._get_extension_bar_center_tube(type, c_tube, drive_head, stubb)
+        center_tube = self._get_extension_bar_center_tube(type, c_tube, drive_head, stubb, length)
         collar1 = 'Extension Bar Collar - 75mm' if c_tube == '4140 75mm square billet' else ''
         collar2 = 'Extension Bar Collar - 100mm' if c_tube == '4140 100mm square billet' else ''
         collar = collar1 if collar1 else collar2
@@ -108,7 +112,7 @@ class ProductProduct(models.Model):
         return components
 
     def _get_eb_telescopic_outer_components(self, type, drive_head, length, c_tube, stubb, lift_lug):
-        center_tube = self._get_extension_bar_center_tube(type, c_tube, drive_head, stubb)
+        center_tube = self._get_extension_bar_center_tube(type, c_tube, drive_head, stubb, length)
         gusset = self._get_extension_bar_center_tube_gusset(drive_head, c_tube)
         _lift_lug = re.match(r'^\s*(\d+(?:\.\d+)?)', lift_lug)
         lift_lug_qty = int(_lift_lug.group(1)) if _lift_lug else 0.0
@@ -117,7 +121,7 @@ class ProductProduct(models.Model):
                 (drive_head, 1),
                 center_tube,
                 (stubb, 1),
-                (gusset, 1),
+                gusset, 
                 liftlug
             ]
         components = [x for x in lst if x[0]]
@@ -125,7 +129,7 @@ class ProductProduct(models.Model):
 
     def _get_eb_rigid_components(self, type, drive_head, length, c_tube, stubb, lift_lug):
         d_head_ears = self._get_bp_dhead_ears(drive_head)
-        center_tube = self._get_extension_bar_center_tube(type, c_tube, drive_head, stubb)
+        center_tube = self._get_extension_bar_center_tube(type, c_tube, drive_head, stubb, length)
         gusset = self._get_extension_bar_center_tube_gusset(drive_head, c_tube)
         base_plate = self._get_eb_base_plate(drive_head)
         collar1 = 'Extension Bar Collar - 75mm' if c_tube == '4140 75mm square billet' else ''
@@ -139,7 +143,7 @@ class ProductProduct(models.Model):
                 (d_head_ears),
                 center_tube,
                 (stubb, 1),
-                (gusset, 1),
+                gusset,
                 liftlug,
                 (base_plate, 1)
             ]
@@ -423,3 +427,94 @@ class ProductProduct(models.Model):
             result.append((to_component, 1))
     
         return result
+
+    def _get_stiffening_ring_for_tensile_adapter(self, drive_from, drive_to, coupling_type):
+        """
+        Determines the correct stiffening ring component for high tensile adapters.
+    
+        Args:
+            drive_from (str): e.g. "150mm Square Drive"
+            drive_to (str): e.g. "130mm Stubb"
+            coupling_type (str): e.g. "Female to Male", "Male to Male", etc.
+    
+        Returns:
+            tuple or None: e.g. ('[75 Drive Stiffening Collar] Stiffening Ring - 130mm Stubb', 1)
+        """
+    
+        stiffening_matrix = {
+            '100mm Square Drive': {
+                '75mm Stubb': True, '100mm Stubb': False, '110mm Stubb': False,
+                '130mm Stubb': False, '150mm Stubb': False, '75mm Head': True,
+            },
+            '110mm Square Drive': {
+                '75mm Stubb': True, '100mm Stubb': True, '110mm Stubb': False,
+                '130mm Stubb': False, '150mm Stubb': False, '75mm Head': True,
+            },
+            '130mm Square Drive': {
+                '75mm Stubb': True, '100mm Stubb': True, '110mm Stubb': True,
+                '130mm Stubb': False, '150mm Stubb': False, '75mm Head': True,
+            },
+            '130mm Square Drive DIGGA': {
+                '75mm Stubb': True, '100mm Stubb': True, '110mm Stubb': True,
+                '130mm Stubb': False, '150mm Stubb': False, '75mm Head': True,
+            },
+            '150mm Square Drive': {
+                '75mm Stubb': True, '100mm Stubb': True, '110mm Stubb': True,
+                '130mm Stubb': True, '150mm Stubb': False, '75mm Head': True,
+            },
+            '150mm Square Drive IMT': {
+                '75mm Stubb': True, '100mm Stubb': True, '110mm Stubb': True,
+                '130mm Stubb': True, '150mm Stubb': True, '75mm Head': True,
+            },
+            '200mm Square Drive Bauer': {
+                '75mm Stubb': True, '100mm Stubb': True, '110mm Stubb': True,
+                '130mm Stubb': True, '150mm Stubb': True, '75mm Head': True,
+            },
+            '200mm Square Drive MAIT': {
+                '75mm Stubb': True, '100mm Stubb': True, '110mm Stubb': True,
+                '130mm Stubb': True, '150mm Stubb': True, '75mm Head': True,
+            },
+        }
+    
+        ring_label_map = {
+            '75mm Stubb': 'Stiffening Ring - 75mm Stubb',
+            '100mm Stubb': 'Stiffening Ring - 100mm Stubb',
+            '110mm Stubb': 'Stiffening Ring - 110mm Stubb',
+            '130mm Stubb': 'Stiffening Ring - 130mm Stubb',
+            '150mm Stubb': 'Stiffening Ring - 150mm Stubb',
+            '75mm Head': 'Stiffening Ring - 75mm Head',
+        }
+    
+        available = stiffening_matrix.get(drive_from)
+        if not available:
+            return None
+    
+        # Preferred stub if 'Stubb' is explicitly mentioned in drive_to
+        preferred_stub = None
+        d_to, _ = drive_to
+        if 'stubb' in d_to.lower():
+            match = re.search(r'(\d{2,3})mm', d_to)
+            if match:
+                preferred_stub = f"{match.group(1)}mm Stubb"
+
+        # Priority fallback order for stub selection
+        drive2_priority_map = {
+            'Female to Male': ['150mm Stubb', '130mm Stubb', '110mm Stubb', '100mm Stubb', '75mm Stubb'],
+            'Male to Male': ['150mm Stubb', '130mm Stubb', '110mm Stubb', '100mm Stubb', '75mm Stubb'],
+            'Female to Female': ['75mm Head'],
+            'Male to Female': ['75mm Head'],
+        }
+        # If explicitly requested stub (e.g. 130mm Stubb) is available, return it
+        if preferred_stub and available.get(preferred_stub):
+            return (f"{ring_label_map[preferred_stub]}", 1)
+
+        # Otherwise fallback to first available option in priority list
+        for stub in drive2_priority_map.get(coupling_type, []):
+            if available.get(stub):
+                return (f"{ring_label_map[stub]}", 1)
+    
+        return None
+
+
+
+    
