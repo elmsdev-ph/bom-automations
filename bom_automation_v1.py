@@ -109,73 +109,35 @@
         drive_band_combination = f"Flat Bar - {db_width}mm x {db_thickness}mm"
 
         if exist:
-            if casing_type == 'Standard':
-                casing = [(permanent_casing, casing_qty)]
-                if teeth:
-                    casing.extend([
-                            ('BFZ318 - Weld on Casing teeth - BETEK', teeth_qty)
-                        ])
-                if d_band:
-                    casing.extend([
-                        (drive_band_combination, drive_qty)
-                    ])
-                return casing
-    
-            else:
-                segmental = [(permanent_casing, casing_qty)]
-                if teeth:
-                    segmental.extend([
-                            ('BFZ318 - Weld on Casing teeth - BETEK', teeth_qty)
-                        ])
-                segmental.extend([(profiling, 1)])
-    
-                return segmental
+            return self._get_pile_casing_type_components(missing_attr, casing_type, profiling, permanent_casing, casing_qty, teeth, teeth_qty, d_band, drive_band_combination, drive_qty)
         else:
-            return self._get_missing_casing_components(missing_attr, permanent_casing, casing_qty, profiling, teeth, teeth_qty, d_band, drive_band_combination, drive_qty)
+            return self._get_pile_casing_type_components(missing_attr, casing_type, profiling, permanent_casing, casing_qty, teeth, teeth_qty, d_band, drive_band_combination, drive_qty)
 
-    def _get_missing_casing_components(self, attr, permanent_casing, casing_qty, profiling, teeth, teeth_qty, d_band, drive_band_combination, drive_qty):
-        """
-            Return a list of casing items that are not available.
-        """
-        if attr == 'Permanent Casing - Stock':
-            component = [(permanent_casing, casing_qty)]
+    def _get_pile_casing_type_components(self, missing_attr, casing_type, profiling, permanent_casing, casing_qty, teeth, teeth_qty, d_band, drive_band_combination, drive_qty):
+        non_stock = 'Permanent Casing - Non-Stocked'
+        suffix_non_stock = '- Non-Stocked' if missing_attr == non_stock else ''
+        permanent_casing_item = permanent_casing if missing_attr != non_stock else f"{permanent_casing} {suffix_non_stock}"
+
+        if casing_type == 'Standard':
+            standard = [(permanent_casing_item, casing_qty)] if missing_attr != 'Proceed without Casing' else []
             if teeth:
-                component.extend([
+                standard.extend([
                         ('BFZ318 - Weld on Casing teeth - BETEK', teeth_qty)
                     ])
             if d_band:
-                component.extend([
+                standard.extend([
                     (drive_band_combination, drive_qty)
                 ])
-            component.extend([(profiling, 1)])
-            return component
-        elif attr == 'Permanent Casing - Non-Stocked':
-            component = [
-                (f'{permanent_casing} - Non-Stocked', casing_qty),
-            ]
-            if teeth:
-                component.extend([
-                        ('BFZ318 - Weld on Casing teeth - BETEK', teeth_qty)
-                    ])
-            if d_band:
-                component.extend([
-                    (drive_band_combination, drive_qty)
-                ])
-            component.extend([(profiling, 1)])
-            return component
+            return standard
+
         else:
-            component = [
-                (profiling, 1)
-            ]
+            segmental = [(permanent_casing_item, casing_qty)] if missing_attr != 'Proceed without Casing' else []
             if teeth:
-                component.extend([
+                segmental.extend([
                         ('BFZ318 - Weld on Casing teeth - BETEK', teeth_qty)
                     ])
-            if d_band:
-                component.extend([
-                    (drive_band_combination, drive_qty)
-                ])
-            return component
+            segmental.extend([(profiling, 1)])
+            return segmental
 
     def _create_bored_pile(self, product):
          """
