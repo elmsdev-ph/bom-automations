@@ -26,7 +26,6 @@
         d_band = attributes.get('Drive Band', '')
         d_band_type = attributes.get('Drive Band Type', '')
         lock_type = attributes.get('Lock Type', '')
-        s_ring = attributes.get('Stiffening Ring', '')
         left_holes = attributes.get('Lift Holes', '')
         teeth = attributes.get('Teeth', '')
         no_of_teeth = attributes.get('No. of Teeth', '')
@@ -39,16 +38,18 @@
             """
             od = 0
             wall = 0
+            wall_str = 0
 
             od_match = re.search(r'(\d+)\s*mm', diameter, re.IGNORECASE)
-            wt_match = re.search(r'(\d+)\s*mm', w_thickness, re.IGNORECASE)
+            wt_match = re.search(r'(\d+(?:\.\d+)?)\s*mm', w_thickness, re.IGNORECASE)
 
             if od_match:
                 od = int(od_match.group(1))
             if wt_match:
-                wall = int(wt_match.group(1))
+                wall_str = wt_match.group(1)Add commentMore actions
+                wall = float(wt_match.group(1))
             od = od + ( 2 * wall)
-            return f"Permanent Casing - OD{od} WT{wall}"
+            return f"Permanent Casing - OD{od} WT{wall_str}"
 
         permanent_casing = _permanent_casing_combination(diameter, w_thickness)
         product_exist = self.env['product.template'].search([('name', '=', permanent_casing)], limit=1)
@@ -58,7 +59,7 @@
         # Build description parts
         parts = [f"{od} Inside Diameter"] if od else []
         if w_thickness:
-            parts.append(f"{w_thickness}mm Wall Thickness")
+            parts.append(f"{w_thickness}")
         if d_band:
             parts.append(f"{d_band}")
         if d_band_type:
@@ -92,8 +93,8 @@
         flat_bar_thickness = float(re.search(r"x(\d+)t", d_band).group(1))
         dband_with_thickness = re.search(r"(\d+)x(\d+)t", d_band)
 
-        db_width = int(dband_with_thickness.group(1)) if dband_with_thickness else 0
-        db_thickness = int(dband_with_thickness.group(2)) if dband_with_thickness else 0
+        db_width = float(dband_with_thickness.group(1)) if dband_with_thickness else 0.0
+        db_thickness = float(dband_with_thickness.group(2)) if dband_with_thickness else 0.0
 
         # Calculate the qty (meter) of the casing, Teeth, and Drive Band
         total_id_aligned_db_mm = (inside_dia + flat_bar_thickness) * math.pi
