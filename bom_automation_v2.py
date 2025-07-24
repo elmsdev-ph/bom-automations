@@ -203,7 +203,6 @@ class ProductProduct(models.Model):
         teeth = attributes.get('Teeth', '')
         no_of_teeth = attributes.get('No. of Teeth', '')
         customization = attributes.get('Customization', '')
-        # missing_attr = attributes.get('Not Available Casing?', '')
 
         def _permanent_casing_combination(diameter, w_thickness):
             """
