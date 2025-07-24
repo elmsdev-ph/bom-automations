@@ -13,7 +13,6 @@ class ProductProduct(models.Model):
 
     is_different_price = fields.Boolean(default=False)
     different_price = fields.Float()
-    #product_template_external_attribute_value_ids = fields.Many2many('product.template.attribute.value', relation='product_variant_combination', string="External Custom Attribute Values", ondelete='restrict')
 
     @api.constrains('name')
     def _check_unique_name(self):
