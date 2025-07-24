@@ -13,7 +13,7 @@ class ProductProduct(models.Model):
 
     is_different_price = fields.Boolean(default=False)
     different_price = fields.Float()
-    product_template_external_attribute_value_ids = fields.Many2many('product.template.attribute.value', relation='product_variant_combination', string="External Custom Attribute Values", ondelete='restrict')
+    #product_template_external_attribute_value_ids = fields.Many2many('product.template.attribute.value', relation='product_variant_combination', string="External Custom Attribute Values", ondelete='restrict')
 
     @api.constrains('name')
     def _check_unique_name(self):
@@ -98,19 +98,102 @@ class ProductProduct(models.Model):
 
         reference = product.display_name
         components = self._get_pile_casing_components(product)
+        attributes = {attr.attribute_id.name: attr.name for attr in product.product_template_attribute_value_ids}
+        d_band = attributes.get('Drive Band', '')
 
         if not components:
             return
 
-        self._create_bom_components(product, reference, components)
+        is_dband = True if d_band else False 
+        self._create_pcs_bom_components(product, reference, components, is_dband)
+
+    def _create_pcs_bom_components(self, product, reference, components, is_dband):
+        bom_lines = []
+        uom_meter = self.env.ref('uom.product_uom_meter', raise_if_not_found=False)
+        unit = self.env.ref('uom.product_uom_unit', raise_if_not_found=False)
+
+        for component_name, qty in components:
+            keywords = {'Permanent Casing', 'Hollow Bar', 'Flat Bar', 'Pipe'}
+            uom = uom_meter if any(keyword in component_name for keyword in keywords) else unit
+            component = self.env['product.product'].search([('name', '=', component_name)], limit=1)
+            if not component:
+                component = self.env['product.product'].create({
+                    'name': component_name,
+                    'type': 'consu',
+                    'is_storable': True,
+                    'uom_id': uom.id,
+                })
+            bom_lines.append((0, 0, {
+                'product_id': component.id,
+                'product_qty': qty,
+                'product_uom_id': uom.id,
+            }))
+        operation_ids = self._get_default_pcs_work_center(product, is_dband)
+        Mrp_bom = self.env['mrp.bom'].create({
+            'code': reference,
+            'product_tmpl_id': product.product_tmpl_id.id,
+            'product_id': product.id,
+            'product_qty': 1.0,
+            'type': 'normal',
+            'bom_line_ids': bom_lines,
+            'operation_ids': operation_ids,
+        })
+        return Mrp_bom
+
+    def _get_default_pcs_work_center(self, product, is_dband):
+        if is_dband:
+            return self.get_with_dband_pile_casing_operations()
+        else:
+            return self.get_without_dband_pile_casing_operations()
+
+    def get_with_dband_pile_casing_operations(self):
+        operations = [
+            {
+                'name': 'Rolling',
+                'workcenter_id': 9,  # Plate Rollers - Rolling
+                'time_mode': 'auto',
+                'time_cycle_manual': 0.0,
+            },
+            {
+                'name': 'Tacking',
+                'workcenter_id': 1,  # Welding Bay - 1 (Trent)
+                'time_mode': 'auto',
+                'time_cycle_manual': 0.0,
+            },
+            {
+                'name': 'Welding',
+                'workcenter_id': 4,  # Welding Bay - 4 (Shayne)
+                'time_mode': 'auto',
+                'time_cycle_manual': 0.0,
+            }
+        ]
+        operation_lines = [(0, 0, op) for op in operations]
+        return operation_lines
+
+    def get_without_dband_pile_casing_operations(self):
+        operations = [
+            {
+                'name': 'Tacking',
+                'workcenter_id': 1,  # Welding Bay - 1 (Trent)
+                'time_mode': 'auto',
+                'time_cycle_manual': 0.0,
+            },
+            {
+                'name': 'Welding',
+                'workcenter_id': 4,  # Welding Bay - 4 (Shayne)
+                'time_mode': 'auto',
+                'time_cycle_manual': 0.0,
+            }
+        ]
+        operation_lines = [(0, 0, op) for op in operations]
+        return operation_lines
 
     def _get_pile_casing_components(self, product):
         """
-            param: product_template_external_attribute_value_ids; we retrieve all attribute values excluding N/A.
+            param: product_template_attribute_value_ids; we retrieve all attribute values excluding N/A.
             return: a list of items & qty for pile casing component.
         """
-        # attributes = {attr.attribute_id.name: attr.name for attr in product.product_template_attribute_value_ids}
-        attributes = {attr.attribute_id.name: attr.name for attr in product.product_template_external_attribute_value_ids}
+        attributes = {attr.attribute_id.name: attr.name for attr in product.product_template_attribute_value_ids}
         casing_type = attributes.get('Casing Type', '')
         diameter = attributes.get('Inside Diameter', '')
         w_thickness = attributes.get('Wall Thickness', '')
@@ -121,7 +204,7 @@ class ProductProduct(models.Model):
         teeth = attributes.get('Teeth', '')
         no_of_teeth = attributes.get('No. of Teeth', '')
         customization = attributes.get('Customization', '')
-        missing_attr = attributes.get('Not Available Casing?', '')
+        # missing_attr = attributes.get('Not Available Casing?', '')
 
         def _permanent_casing_combination(diameter, w_thickness):
             """
@@ -161,19 +244,12 @@ class ProductProduct(models.Model):
             parts.append(f"{customization}")
 
         profiling = f"Profiling - Pile Casing Stock {', '.join(parts)}"
-        error_message = ValidationError(
-            f"Oops! The '{permanent_casing}' is not available.\n"
-            "Please select the available casing attributes to proceed with BOM creation."
-        )
-        if casing_type in ['Standard', 'Segmental'] and not missing_attr and len(product_exist) == 0:
-            raise error_message
+        if product_exist:
+            return self._get_casing_component(True, casing_type, diameter, w_thickness, c_length, d_band, d_band_type, teeth, no_of_teeth, permanent_casing, profiling)
         else:
-            if product_exist:
-                return self._get_casing_component(True, casing_type, diameter, w_thickness, c_length, d_band, d_band_type, teeth, no_of_teeth, permanent_casing, profiling, missing_attr)
-            else:
-                return self._get_casing_component(False, casing_type, diameter, w_thickness, c_length, d_band, d_band_type, teeth, no_of_teeth, permanent_casing, profiling, missing_attr)
+            return self._get_casing_component(False, casing_type, diameter, w_thickness, c_length, d_band, d_band_type, teeth, no_of_teeth, permanent_casing, profiling)
 
-    def _get_casing_component(self, exist, casing_type, diameter, w_thickness, c_length, d_band, d_band_type, teeth, no_of_teeth, permanent_casing, profiling, missing_attr):
+    def _get_casing_component(self, exist, casing_type, diameter, w_thickness, c_length, d_band, d_band_type, teeth, no_of_teeth, permanent_casing, profiling):
         # Extract numbers of attribute values
         casing_match = re.search(r"\d+\.?\d*", c_length)
         no_teeth_match = re.search(r"\d+\.?\d*", no_of_teeth)
@@ -183,8 +259,8 @@ class ProductProduct(models.Model):
         flat_bar_thickness = float(x_d_band.group(1)) if x_d_band else 0
         dband_with_thickness = re.search(r"(\d+)x(\d+)t", d_band)
 
-        db_width = float(dband_with_thickness.group(1)) if dband_with_thickness else 0.0
-        db_thickness = float(dband_with_thickness.group(2)) if dband_with_thickness else 0.0
+        db_width = int(dband_with_thickness.group(1)) if dband_with_thickness else 0.0
+        db_thickness = int(dband_with_thickness.group(2)) if dband_with_thickness else 0.0
 
         # Calculate the qty (meter) of the casing, Teeth, and Drive Band
         total_id_aligned_db_mm = (inside_dia + flat_bar_thickness) * math.pi
@@ -200,17 +276,13 @@ class ProductProduct(models.Model):
         drive_band_combination = f"Flat Bar - {db_width}mm x {db_thickness}mm"
 
         if exist:
-            return self._get_pile_casing_type_components(missing_attr, casing_type, profiling, permanent_casing, casing_qty, teeth, teeth_qty, d_band, drive_band_combination, drive_qty)
+            return self._get_pile_casing_type_components(casing_type, profiling, permanent_casing, casing_qty, teeth, teeth_qty, d_band, drive_band_combination, drive_qty)
         else:
-            return self._get_pile_casing_type_components(missing_attr, casing_type, profiling, permanent_casing, casing_qty, teeth, teeth_qty, d_band, drive_band_combination, drive_qty)
+            return self._get_pile_casing_type_components(casing_type, profiling, permanent_casing, casing_qty, teeth, teeth_qty, d_band, drive_band_combination, drive_qty)
 
-    def _get_pile_casing_type_components(self, missing_attr, casing_type, profiling, permanent_casing, casing_qty, teeth, teeth_qty, d_band, drive_band_combination, drive_qty):
-        non_stock = 'Permanent Casing - Non-Stocked'
-        suffix_non_stock = '- Non-Stocked' if missing_attr == non_stock else ''
-        permanent_casing_item = permanent_casing if missing_attr != non_stock else f"{permanent_casing} {suffix_non_stock}"
-
+    def _get_pile_casing_type_components(self, casing_type, profiling, permanent_casing, casing_qty, teeth, teeth_qty, d_band, drive_band_combination, drive_qty):
         if casing_type == 'Standard':
-            standard = [(permanent_casing_item, casing_qty)] if missing_attr != 'Proceed without Casing' else []
+            standard = [(permanent_casing, casing_qty)]
             if teeth:
                 standard.extend([
                         ('BFZ318 - Weld on Casing teeth - BETEK', teeth_qty)
@@ -222,14 +294,14 @@ class ProductProduct(models.Model):
             return standard
 
         else:
-            segmental = [(permanent_casing_item, casing_qty)] if missing_attr != 'Proceed without Casing' else []
+            segmental = [(permanent_casing, casing_qty)]
             if teeth:
                 segmental.extend([
                         ('BFZ318 - Weld on Casing teeth - BETEK', teeth_qty)
                     ])
             segmental.extend([(profiling, 1)])
             return segmental
-
+    
     def _create_bored_pile(self, product):
         """
         Create a BOM component for Bored Pile Auger
@@ -240,7 +312,6 @@ class ProductProduct(models.Model):
         reference = product.display_name
         components = self._get_bored_pile_component(product)
         _logger.info("bored pile components... %s", components)
-        # raise ValidationError(f"This is bored... {components}")
         self._create_bom_components(product, reference, components)
 
     def _get_bored_pile_component(self, product):
@@ -2682,7 +2753,8 @@ class ProductProduct(models.Model):
         unit = self.env.ref('uom.product_uom_unit', raise_if_not_found=False)
 
         for component_name, qty in components:
-            uom = uom_meter if ['Permanent Casing', 'Hollow Bar', 'Flat Bar', 'Pipe'] in component_name else unit
+            keywords = {'Permanent Casing', 'Hollow Bar', 'Flat Bar', 'Pipe'}
+            uom = uom_meter if any(keyword in component_name for keyword in keywords) else unit
             component = self.env['product.product'].search([('name', '=', component_name)], limit=1)
             if not component:
                 component = self.env['product.product'].create({
@@ -2994,4 +3066,3 @@ class ProductProduct(models.Model):
                 'email_from': 'notifications@tebcoptyltd.odoo.com', 
                 'email_to': 'von@tebco.com.au'
             })
-
