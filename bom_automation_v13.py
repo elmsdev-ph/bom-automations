@@ -398,11 +398,15 @@ class ProductProduct(models.Model):
                 ])
             return item_lst
         else:
-            item_lst = [(permanent_casing, casing_qty)]        
-            item_lst.extend([
-                (flat_bar_dband, fb_dband_qty),
-                (flat_bar_shoe, fb_shoe_qty)
-            ])
+            item_lst = [(permanent_casing, casing_qty)]
+            if flat_bar_dband:
+                item_lst.extend([
+                    (flat_bar_dband, fb_dband_qty)
+                ])
+            if flat_bar_shoe:
+                item_lst.extend([
+                    (flat_bar_shoe, fb_shoe_qty)
+                ])
             if teeth:
                 item_lst.extend([
                     ('BFZ318TB - Weld on Casing teeth', teeth_qty)
