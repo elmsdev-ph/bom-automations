@@ -85,7 +85,7 @@ class ProductProduct(models.Model):
             self._create_tre_pipe(product)
             self._create_cleaning_bucket(product)
             self._create_drilling_barrel(product)
-            self._create_bored_pile(product)
+            # self._create_bored_pile(product)
             self._create_pile_casing(product)
             self.send_product_variant_creation_email(product)
         return products
@@ -256,11 +256,15 @@ class ProductProduct(models.Model):
         casing_qty = float(casing_match.group()) if casing_match else 0
         teeth_qty = int(no_teeth_match.group()) if no_teeth_match else 0
 
-        def _get_dband_shoe_qty(type, inside_dia, wall_thickness, sizes):
+        def _get_dband_shoe_qty(type, inside_dia, wall_thickness, at_sizes):
             """
             Calculate the quantity (meter) of the ID aligned, OD aligned, and overlapped
             """
-            attr_sizes = re.search(r"x(\d+)t", sizes)
+            # Handle case where sizes is None or empty - return early
+            if not at_sizes:
+                return 0.0
+
+            attr_sizes = re.search(r"x(\d+)t", at_sizes)
             flat_bar_thickness = int(attr_sizes.group(1)) if attr_sizes else 0
 
             if type == 'id_align':
@@ -380,11 +384,11 @@ class ProductProduct(models.Model):
             return abs(ad - bd) <= dia_tol and abs(at - bt) <= thk_tol
 
         has_same_size = sizes_equal(d_band_size, shoe_size)
-        d_type = 'id_align' if shoe_type_a == 'ID Aligned Drive Band' else 'ol' 
-        s_type = 'id_align' if shoe_type_a == 'ID Aligned Casing Shoe' else 'od_align' 
+        d_type = 'id_align' if d_band_type_a == 'ID Aligned Drive Band' else 'ol'
+        s_type = 'id_align' if shoe_type_a == 'ID Aligned Casing Shoe' else 'od_align'
 
         fb_dband_qty = _get_dband_shoe_qty(d_type, inside_dia, wall_thickness, d_band_size)
-        fb_shoe_qty = _get_dband_shoe_qty(s_type, inside_dia, wall_thickness, d_band_size)
+        fb_shoe_qty = _get_dband_shoe_qty(s_type, inside_dia, wall_thickness, shoe_size)
         tot_fb_qty = fb_dband_qty + fb_shoe_qty
 
         if has_same_size:
@@ -2865,7 +2869,7 @@ class ProductProduct(models.Model):
         unit = self.env.ref('uom.product_uom_unit', raise_if_not_found=False)
 
         for component_name, qty in components:
-            keywords = {'Permanent Casing', 'Hollow Bar', 'Flat Bar', 'Pipe'}
+            keywords = {'Permanent Casing', 'Hollow Bar', 'Flat Bar', 'Pipe', 'Parallel Flange Channel', 'Bright Bar'}
             uom = uom_meter if any(keyword in component_name for keyword in keywords) else unit
             component = self.env['product.product'].search([('name', '=', component_name)], limit=1)
             if not component:
@@ -3178,4 +3182,3 @@ class ProductProduct(models.Model):
                 'email_from': 'notifications@tebcoptyltd.odoo.com', 
                 'email_to': 'von@tebco.com.au'
             })
-
