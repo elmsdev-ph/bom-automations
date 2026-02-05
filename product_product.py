@@ -455,26 +455,17 @@ class ProductProduct(models.Model):
         override_bom = attributes.get('Override BOM', '')
 
         if type in ['Taper Rock', 'Dual Rock']:
-            components = self._get_bp_dual_taper_rock(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt)
+            components = self._get_bp_dual_taper_rock(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom)
         elif type == 'Triad Rock':
-            components = self._get_bp_triad_rock(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt)
+            components = self._get_bp_triad_rock(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom)
         elif type in ['ZED 25mm', 'ZED 32mm', 'ZED 40mm', 'ZED 50mm']: 
-            components = self._get_bp_zed(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt)
+            components = self._get_bp_zed(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom)
         elif type == 'Clay/Shale':
-            components = self._get_bp_clay_shale(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt)
+            components = self._get_bp_clay_shale(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom)
         else:
             # list of items for blade
-            components = self._get_bp_blade(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt)
+            components = self._get_bp_blade(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom)
         return components
-
-    def _get_bp_dhead_ears(self, dhead):
-        if dhead not in ['Drive Head - 130mm Square DIGGA', 'Drive Head - 130mm Square']:
-            return (None, 0)
-
-        if dhead == 'Drive Head - 130mm Square':
-            return (f"Drive Head EARS - 130mm Square", 2)
-        else:
-            return (f"Drive Head EARS - 130mm Square DIGGA", 4)
 
     def _get_base_plate(self, dhead):
         exclude_dhead = {
@@ -515,30 +506,38 @@ class ProductProduct(models.Model):
 
         gusset_map = {
             'dhead_100_110_mm': {
+                # Hollow Bars
                 'Hollow Bar - OD128mm WT 11.5mm': "Gusset - 100mm Drive 150mm Tube",
                 'Hollow Bar - OD150mm ID120mm': "Gusset - 100mm Drive 150mm Tube",
                 'Hollow Bar - OD152mm WT 26mm': "Gusset - 100mm Drive 150mm Tube",
                 'Hollow Bar - OD152mm WT 33.5mm': "Gusset - 100mm Drive 150mm Tube",
                 'Hollow Bar - OD168mm WT 21.5mm': "Gusset - 100mm Drive 170mm Tube",
                 'Hollow Bar - OD168mm WT 29mm': "Gusset - 100mm Drive 170mm Tube",
-                'Hollow Bar - OD180mm ID140mm': "Gusset - 100mm Drive 170mm Tube",
+                'Hollow Bar - OD170mm ID140mm': "Gusset - 100mm Drive 170mm Tube",
                 'Hollow Bar - OD180 ID150': "Gusset - 100mm Drive 170mm Tube",
                 'Hollow bar - OD200 ID150': "Gusset - 100mm Drive 170mm Tube",
-                'Hollow Bar - OD219mm WT 25mm': "Gusset - 100mm Drive 219mm Tube ",
+                'Hollow Bar - OD219mm WT 25mm': "Gusset - 100mm Drive 219mm Tube",
+                # Pipes
+                'Pipe - OD168mm WT6.4mm': "Gusset - 100mm Drive 170mm Tube",
+                'Pipe - OD168mm WT4.8mm': "Gusset - 100mm Drive 170mm Tube",
                 'Pipe - OD168mm WT11mm': "Gusset - 100mm Drive 170mm Tube",
+                'Pipe - OD177mm WT 8mm': "Gusset - 100mm Drive 170mm Tube",
+                'Pipe - OD219mm WT8.2mm': "Gusset - 100mm Drive 219mm Tube",
+                'Pipe - OD219mm WT6.4mm': "Gusset - 100mm Drive 219mm Tube",
                 'Pipe - OD219mm WT12.7mm': "Gusset - 100mm Drive 219mm Tube",
             },
             'dhead_130_mm': {
+                # Hollow Bars
                 'Hollow Bar - OD150mm ID120mm': "Gusset - 130mm Drive 150mm Tube",
                 'Hollow Bar - OD152mm WT 26mm': "Gusset - 130mm Drive 150mm Tube",
                 'Hollow Bar - OD152mm WT 33.5mm': "Gusset - 130mm Drive 150mm Tube",
                 'Hollow Bar - OD168mm WT 21.5mm': "Gusset - 130mm Drive 170mm Tube",
                 'Hollow Bar - OD168mm WT 29mm': "Gusset - 130mm Drive 170mm Tube",
-                'Hollow Bar - OD180mm ID140mm': "Gusset - 130mm Drive 170mm Tube",
+                'Hollow Bar - OD170mm ID140mm': "Gusset - 130mm Drive 170mm Tube",
                 'Hollow Bar - OD180 ID150': "Gusset - 130mm Drive 170mm Tube",
                 'Hollow bar - OD200 ID150': "Gusset - 130mm Drive 170mm Tube",
                 'Hollow Bar - OD219mm WT 25mm': "Gusset - 130mm Drive 219mm Tube",
-                'Hollow bar - OD273mm WT14': "Gusset - 130mm Drive 273mm Tube",
+                'hollow bar - OD273mm WT14': "Gusset - 130mm Drive 273mm Tube",
                 'Hollow Bar - OD273mm WT 25mm': "Gusset - 130mm Drive 273mm Tube",
                 'Hollow Bar - OD273mm WT 32mm': "Gusset - 130mm Drive 273mm Tube",
                 'Hollow Bar - OD323mm WT25mm': "Gusset - 130mm Drive 323mm Tube",
@@ -546,20 +545,36 @@ class ProductProduct(models.Model):
                 'Hollow Bar - OD356 ID306': "Gusset - 130mm Drive 323mm Tube",
                 'Hollow bar - OD457mm T35mm': "Gusset - 130mm Drive 323mm Tube",
                 'Hollow bar - OD457mm T25mm': "Gusset - 130mm Drive 323mm Tube",
+                # Pipes
+                'Pipe - OD168mm WT6.4mm': "Gusset - 130mm Drive 170mm Tube",
+                'Pipe - OD168mm WT4.8mm': "Gusset - 130mm Drive 170mm Tube",
                 'Pipe - OD168mm WT11mm': "Gusset - 130mm Drive 170mm Tube",
+                'Pipe - OD177mm WT 8mm': "Gusset - 130mm Drive 170mm Tube",
+                'Pipe - OD219mm WT8.2mm': "Gusset - 130mm Drive 219mm Tube",
+                'Pipe - OD219mm WT6.4mm': "Gusset - 130mm Drive 219mm Tube",
                 'Pipe - OD219mm WT12.7mm': "Gusset - 130mm Drive 219mm Tube",
+                'Pipe - OD273mm WT9.3mm': "Gusset - 130mm Drive 273mm Tube",
+                'Pipe - OD273mm WT6.4mm': "Gusset - 130mm Drive 273mm Tube",
                 'Pipe - OD273mm WT12.7mm': "Gusset - 130mm Drive 273mm Tube",
-                'Pipe - OD323mm WT12.7mm ': "Gusset - 130mm Drive 323mm Tube",
-                'Pipe - OD355mm WT12.7mm ': "Gusset - 130mm Drive 323mm Tube",
-                'Pipe - OD457mm WT15.9mm ': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD323mm WT9.75mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD323mm WT9.5mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD323mm WT6.4mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD323mm WT12.7mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD355 WT9.5mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD355mm WT12.7mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - 406mm 9.5mm WT': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD406mm WT12.7mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD457mm WT9.5mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD457mm WT15.9mm': "Gusset - 130mm Drive 323mm Tube",
             },
             'dhead_150_mm': {
+                # Hollow Bars
                 'Hollow Bar - OD150mm ID120mm': "Gusset - 150mm Drive 150mm Tube",
                 'Hollow Bar - OD152mm WT 26mm': "Gusset - 150mm Drive 150mm Tube",
                 'Hollow Bar - OD152mm WT 33.5mm': "Gusset - 150mm Drive 150mm Tube",
                 'Hollow Bar - OD168mm WT 21.5mm': "Gusset - 150mm Drive 170mm Tube",
                 'Hollow Bar - OD168mm WT 29mm': "Gusset - 150mm Drive 170mm Tube",
-                'Hollow Bar - OD180mm ID140mm': "Gusset - 150mm Drive 170mm Tube",
+                'Hollow Bar - OD170mm ID140mm': "Gusset - 150mm Drive 170mm Tube",
                 'Hollow Bar - OD180 ID150': "Gusset - 150mm Drive 170mm Tube",
                 'Hollow bar - OD200 ID150': "Gusset - 150mm Drive 170mm Tube",
                 'Hollow Bar - OD219mm WT 25mm': "Gusset - 150mm Drive 170mm Tube",
@@ -571,17 +586,33 @@ class ProductProduct(models.Model):
                 'Hollow Bar - OD356 ID306': "Gusset - 150mm Drive 273mm Tube",
                 'Hollow bar - OD457mm T35mm': "Gusset - 150mm Drive 273mm Tube",
                 'Hollow bar - OD457mm T25mm': "Gusset - 150mm Drive 273mm Tube",
+                # Pipes
+                'Pipe - OD168mm WT6.4mm': "Gusset - 130mm Drive 170mm Tube",
+                'Pipe - OD168mm WT4.8mm': "Gusset - 130mm Drive 170mm Tube",
                 'Pipe - OD168mm WT11mm': "Gusset - 130mm Drive 170mm Tube",
+                'Pipe - OD177mm WT 8mm': "Gusset - 130mm Drive 170mm Tube",
+                'Pipe - OD219mm WT8.2mm': "Gusset - 130mm Drive 219mm Tube",
+                'Pipe - OD219mm WT6.4mm': "Gusset - 130mm Drive 219mm Tube",
                 'Pipe - OD219mm WT12.7mm': "Gusset - 130mm Drive 219mm Tube",
+                'Pipe - OD273mm WT9.3mm': "Gusset - 150mm Drive 273mm Tube",
+                'Pipe - OD273mm WT6.4mm': "Gusset - 150mm Drive 273mm Tube",
                 'Pipe - OD273mm WT12.7mm': "Gusset - 150mm Drive 273mm Tube",
-                'Pipe - OD323mm WT12.7mm ': "Gusset - 150mm Drive 273mm Tube",
-                'Pipe - OD355mm WT12.7mm ': "Gusset - 150mm Drive 273mm Tube",
-                'Pipe - OD457mm WT15.9mm ': "Gusset - 150mm Drive 273mm Tube",
+                'Pipe - OD323mm WT9.75mm': "Gusset - 150mm Drive 273mm Tube",
+                'Pipe - OD323mm WT9.5mm': "Gusset - 150mm Drive 273mm Tube",
+                'Pipe - OD323mm WT6.4mm': "Gusset - 150mm Drive 273mm Tube",
+                'Pipe - OD323mm WT12.7mm': "Gusset - 150mm Drive 273mm Tube",
+                'Pipe - OD355 WT9.5mm': "Gusset - 150mm Drive 273mm Tube",
+                'Pipe - OD355mm WT12.7mm': "Gusset - 150mm Drive 273mm Tube",
+                'Pipe - 406mm 9.5mm WT': "Gusset - 150mm Drive 273mm Tube",
+                'Pipe - OD406mm WT12.7mm': "Gusset - 150mm Drive 273mm Tube",
+                'Pipe - OD457mm WT9.5mm': "Gusset - 150mm Drive 273mm Tube",
+                'Pipe - OD457mm WT15.9mm': "Gusset - 150mm Drive 273mm Tube",
             },
             'dhead_200_mm': {
+                # Hollow Bars
                 'Hollow Bar - OD168mm WT 21.5mm': "Gusset - 200mm Drive 170mm Tube",
                 'Hollow Bar - OD168mm WT 29mm': "Gusset - 200mm Drive 170mm Tube",
-                'Hollow Bar - OD180mm ID140mm': "Gusset - 200mm Drive 170mm Tube",
+                'Hollow Bar - OD170mm ID140mm': "Gusset - 200mm Drive 170mm Tube",
                 'Hollow Bar - OD180 ID150': "Gusset - 200mm Drive 170mm Tube",
                 'Hollow bar - OD200 ID150': "Gusset - 200mm Drive 170mm Tube",
                 'Hollow Bar - OD219mm WT 25mm': "Gusset - 200mm Drive 170mm Tube",
@@ -593,12 +624,27 @@ class ProductProduct(models.Model):
                 'Hollow Bar - OD356 ID306': "Gusset - 200mm Drive 273mm Tube",
                 'Hollow bar - OD457mm T35mm': "Gusset - 200mm Drive 273mm Tube",
                 'Hollow bar - OD457mm T25mm': "Gusset - 200mm Drive 273mm Tube",
+                # Pipes
+                'Pipe - OD168mm WT6.4mm': "Gusset - 200mm Drive 170mm Tube",
+                'Pipe - OD168mm WT4.8mm': "Gusset - 200mm Drive 170mm Tube",
                 'Pipe - OD168mm WT11mm': "Gusset - 200mm Drive 170mm Tube",
+                'Pipe - OD177mm WT 8mm': "Gusset - 200mm Drive 170mm Tube",
+                'Pipe - OD219mm WT8.2mm': "Gusset - 200mm Drive 170mm Tube",
+                'Pipe - OD219mm WT6.4mm': "Gusset - 200mm Drive 170mm Tube",
                 'Pipe - OD219mm WT12.7mm': "Gusset - 200mm Drive 170mm Tube",
+                'Pipe - OD273mm WT9.3mm': "Gusset - 200mm Drive 273mm Tube",
+                'Pipe - OD273mm WT6.4mm': "Gusset - 200mm Drive 273mm Tube",
                 'Pipe - OD273mm WT12.7mm': "Gusset - 200mm Drive 273mm Tube",
-                'Pipe - OD323mm WT12.7mm ': "Gusset - 200mm Drive 273mm Tube",
-                'Pipe - OD355mm WT12.7mm ': "Gusset - 200mm Drive 273mm Tube",
-                'Pipe - OD457mm WT15.9mm ': "Gusset - 200mm Drive 273mm Tube",
+                'Pipe - OD323mm WT9.75mm': "Gusset - 200mm Drive 273mm Tube",
+                'Pipe - OD323mm WT9.5mm': "Gusset - 200mm Drive 273mm Tube",
+                'Pipe - OD323mm WT6.4mm': "Gusset - 200mm Drive 273mm Tube",
+                'Pipe - OD323mm WT12.7mm': "Gusset - 200mm Drive 273mm Tube",
+                'Pipe - OD355 WT9.5mm': "Gusset - 200mm Drive 273mm Tube",
+                'Pipe - OD355mm WT12.7mm': "Gusset - 200mm Drive 273mm Tube",
+                'Pipe - 406mm 9.5mm WT': "Gusset - 200mm Drive 273mm Tube",
+                'Pipe - OD406mm WT12.7mm': "Gusset - 200mm Drive 273mm Tube",
+                'Pipe - OD457mm WT9.5mm': "Gusset - 200mm Drive 273mm Tube",
+                'Pipe - OD457mm WT15.9mm': "Gusset - 200mm Drive 273mm Tube",
             }
         }
 
@@ -606,11 +652,11 @@ class ProductProduct(models.Model):
         d_head = ''
         if drive_head in dhead_100_110_mm:
             d_head = 'dhead_100_110_mm'
-        if drive_head in dhead_130_mm:
+        elif drive_head in dhead_130_mm:
             d_head = 'dhead_130_mm'
-        if drive_head in dhead_150_mm:
+        elif drive_head in dhead_150_mm:
             d_head = 'dhead_150_mm'
-        if drive_head in dhead_200_mm:
+        elif drive_head in dhead_200_mm:
             d_head = 'dhead_200_mm'
 
         gusset_label = gusset_map.get(d_head, {}).get(centre_tube)
@@ -738,7 +784,7 @@ class ProductProduct(models.Model):
             p_match = re.search(r'P(\d+)', res)
             r_match = re.search(r'R(\d+\.\d+)', res)
 
-            pitch = int(p_match.group(1))
+            pitch = int(p_match.group(1)) if p_match else 0
             turns = float(r_match.group(1)) if r_match else 1
     
             return pitch, turns
@@ -841,7 +887,7 @@ class ProductProduct(models.Model):
 
         return f"Flight - {od_value} {id_value} {pitch} {thickness} {f_rotation} {turns}"
 
-    def _get_lead_or_carrier_flight(self, type, diameter, center_tube, l_pt, l_od, c_pt, c_od, rotation, flighted_length):
+    def _get_lead_or_carrier_flight(self, type, diameter, center_tube, l_pt, l_od, c_pt, c_od, rotation, flighted_length, override_bom):
         """
         Returns a list of tuples (flight_string, quantity) for lead and carrier flights.
         """
@@ -849,16 +895,24 @@ class ProductProduct(models.Model):
         lead_flight = self._get_flight_combination(l_pt, l_od, diameter, center_tube, rotation)
         carrier_flight = self._get_flight_combination(c_pt, c_od, diameter, center_tube, rotation)
 
-        # Product = self.env['product.template']
-        # _lead = Product.search([('name', '=', lead_flight)], limit=1)
-        # _carrier = Product.search([('name', '=', carrier_flight)], limit=1)
+        def _check_flights(flight):
+            return self.env['product.product'].search_count([
+                ('name', '=', flight)
+            ]) > 0
 
-        if not lead_flight:
-            raise ValidationError("Oops! Lead Flight is not available, please review the selection or Override BOM")
-        if not c_pt or not c_od:
-            raise ValidationError("Oops! Carrier Flight is not available, please review the selection or Override BOM")
-        if not lead_flight and not carrier_flight:
-            raise ValidationError("Oops! Lead Flight and Carrier Flight is not available, please review the selection or Override BOM")
+        _lead = _check_flights(lead_flight)
+        _carrier = _check_flights(carrier_flight)
+
+        flight = ""
+        if not _lead and not _carrier:
+            flight = "Lead Flight & Carrier Flights"
+        elif not _lead:
+            flight = "Lead Flight"
+        elif not _carrier:
+            flight = "Carrier Flight"
+
+        if not override_bom:
+            raise ValidationError(f"Opss! {flight} is not available, please review the selection or Override BOM.")
 
         # Compute the carrier qty
         carrier_qty = self._get_carrier_flight_qty(type, lead_flight, carrier_flight, flighted_length)
@@ -868,9 +922,12 @@ class ProductProduct(models.Model):
         else:
             lead_qty = 2
 
+        
+        le_flight = lead_flight if not override_bom else None
+        ca_flight = carrier_flight if not override_bom else None
         return [
-            (lead_flight or None, lead_qty if lead_flight else 0),
-            (carrier_flight or None, carrier_qty if carrier_flight else 0)
+            (le_flight, lead_qty if lead_flight else 0),
+            (ca_flight, carrier_qty if carrier_flight else 0)
         ]
 
     def _get_stock_lead_carrier_flight(self, auger_type, diameter, lead_flight, carrier_flight, flighted_length, carrier_qty):
@@ -994,7 +1051,7 @@ class ProductProduct(models.Model):
         pilot_parts = PILOT_CONFIG.get(pilot, [])
         pilot_support = pilot_parts[1][0] if pilot_parts else ""
         pilot_support_od = self._get_pilot_support_od(pilot_support)
-            
+
         offset = 20 if diameter < 1500 else 30
         result = []
 
@@ -1354,7 +1411,7 @@ class ProductProduct(models.Model):
                 return item[0]
         return None  # No keyword match found
 
-    def _get_bp_dual_taper_rock(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt):
+    def _get_bp_dual_taper_rock(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom):
         d_number = re.findall(r'\d+', diameter)[0]
         diameter = int(d_number)
 
@@ -1366,7 +1423,7 @@ class ProductProduct(models.Model):
         tube_gusset = self._get_tube_guesset(drive_head, center_tube)
         fb_components = self._get_flight_brace_components(drive_head, carrier_lead_flight_od, carrier_lead_flight_pt)
         flight_brace = self._get_range_per_diameter(fb_components, diameter) if fb_components else []
-        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length)
+        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length, override_bom)
 
         fb_item, fb_qty = flight_brace if flight_brace else (None, 0)
         stiffening = (stiffening_ring, 1) if stiffening_ring else (None, 0) 
@@ -1392,11 +1449,11 @@ class ProductProduct(models.Model):
         components = [c for c in components if c and len(c) >= 2 and c[0] and c[1]]
         return components
 
-    def _get_bp_triad_rock(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt):
+    def _get_bp_triad_rock(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom):
         d_number = re.findall(r'\d+', diameter)[0]
         diameter = int(d_number)
 
-        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length)
+        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length, override_bom)
         teeth_triad_rock = self._get_teeth_triad_rock(diameter, teeth, pilot) or []
 
         pilot_support = self._get_pilot_support(teeth_triad_rock)
@@ -1414,7 +1471,7 @@ class ProductProduct(models.Model):
         components = [c for c in components if c and len(c) >= 2 and c[0] and c[1]]
         return components
 
-    def _get_bp_zed(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt):
+    def _get_bp_zed(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom):
         d_number = re.findall(r'\d+', diameter)[0]
         diameter = int(d_number)
 
@@ -1429,7 +1486,7 @@ class ProductProduct(models.Model):
         flight_brace = self._get_range_per_diameter(fb_components, diameter) if fb_components else []
         fb_item, fb_qty = flight_brace if flight_brace else (None, 0)
 
-        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length)
+        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length, override_bom)
         zed_centre = self._get_zed_center_component_map(center_tube)
         _center_tube = self._get_center_tube_zed(overall_length, drive_head, center_tube, zed_centre)
         teeth_zed = self._get_teeth_zed(diameter, center_tube, teeth) or []
@@ -1456,7 +1513,7 @@ class ProductProduct(models.Model):
 
         return components
 
-    def _get_bp_clay_shale(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt):
+    def _get_bp_clay_shale(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom):
         d_number = re.findall(r'\d+', diameter)[0]
         diameter = int(d_number)
 
@@ -1467,7 +1524,7 @@ class ProductProduct(models.Model):
         base_plate = self._get_base_plate(drive_head)
         tube_gusset = self._get_tube_guesset(drive_head, center_tube)
 
-        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length)
+        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length, override_bom)
         teeth_clay_shale = self._get_teeth_clay_shale(diameter, teeth, pilot) or []
 
         pilot_support = self._get_pilot_support(teeth_clay_shale)
@@ -1491,11 +1548,11 @@ class ProductProduct(models.Model):
 
         return components
 
-    def _get_bp_blade(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt):
+    def _get_bp_blade(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom):
         d_number = re.findall(r'\d+', diameter)[0]
         diameter = int(d_number)
 
-        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length)
+        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length, override_bom)
         teeth_blade = self._get_teeth_blade(diameter, teeth, pilot)
 
         pilot_support = self._get_pilot_support(teeth_blade)
