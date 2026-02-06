@@ -1833,9 +1833,9 @@ class ProductProduct(models.Model):
         _none = (None, 0)
 
         lst = [
-            (lead_flight_str, lead_qty) if not override_bom else _none,
-            (carrier_flight_str, abs(ca_qty)) if not override_bom else _none,
-            (coupling_flight_str, abs(co_qty)) if not override_bom else _none
+            (lead_flight_str, lead_qty) if l_flight and override_bom or l_flight and not override_bom else _none,
+            (carrier_flight_str, abs(ca_qty)) if ca_flight and override_bom or ca_flight and not override_bom else _none,
+            (coupling_flight_str, abs(co_qty)) if co_flight and override_bom or co_flight and not override_bomelse else _none
         ]
         components = [r for r in lst if r[0]]
         return components
