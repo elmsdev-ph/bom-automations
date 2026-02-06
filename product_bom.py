@@ -91,6 +91,8 @@ class ProductProduct(models.Model):
         cfa_stock_flights_at4 = self._get_cfa_lead_ca_co_flights(cfa_type, lead_type, diameter, centre_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id, rotation, o_length, drive_head, override_bom)
         # Get all the teeth and pilot items
         teeth_and_pilot_at5 = self._get_cfa_coupling_teeth_at5(diameter, centre_tube, lead_type, teeth, pilot)
+        # Get tube gusset
+        cfa_tube_gusset_at7 = self._get_cfa_tube_gusset_at7(centre_tube, drive_head)
 
         # We combine all components based on lead type
         combination = [
@@ -98,6 +100,7 @@ class ProductProduct(models.Model):
             *cfa_stock_flights_at4,
             *teeth_and_pilot_at5,
             *ctube_at3,
+            cfa_tube_gusset_at7
         ]
 
         # We filter components to exclude non-values
@@ -160,12 +163,14 @@ class ProductProduct(models.Model):
         # Get all the teeth and pilot items
         teeth_and_pilot_at5 = self._get_cfa_coupling_teeth_at5(diameter, centre_tube, lead_type, teeth, pilot)
         # We combine all components based on lead type
+        cfa_tube_gusset_at7 = self._get_cfa_tube_gusset_at7(centre_tube, drive_head)
         combination = [
             *base_coupling_at2,
             *cfa_stock_flights_at4,
             *teeth_and_pilot_at5,
             *ctube_at3,
             *zed_center_at6,
+            cfa_tube_gusset_at7,
         ]
         # We filter components to exclude non-values
         components = [r for r in combination if r[0]]
@@ -182,6 +187,7 @@ class ProductProduct(models.Model):
         cfa_stock_flights_at4 = self._get_cfa_lead_ca_co_flights(cfa_type, lead_type, diameter, centre_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id, rotation, o_length, drive_head, override_bom)
         # Get all the teeth and pilot items
         teeth_and_pilot_at5 = self._get_cfa_coupling_teeth_at5(diameter, centre_tube, lead_type, teeth, pilot)
+        cfa_tube_gusset_at7 = self._get_cfa_tube_gusset_at7(centre_tube, drive_head)
 
         id_value = ""
         # dia = int(re.search(r"\d+\.?\d*", diameter).group())
@@ -198,6 +204,7 @@ class ProductProduct(models.Model):
             *teeth_and_pilot_at5,
             *ctube_at3,
             *profiling,
+            cfa_tube_gusset_at7,
         ]
         # We filter components to exclude non-values
         components = [r for r in combination if r[0]]
@@ -616,6 +623,81 @@ class ProductProduct(models.Model):
                 lst = [(Stub_dhead, stub_qty) or _none]
                 components.extend(lst)
         return components
+
+    def _get_cfa_tube_gusset_at7(self, centre_tube, drive_head):
+        dhead_100_110_mm = ['Drive Head - 100mm Square', 'Drive Head - 110mm Square']
+        dhead_130_mm = ['Drive Head - 130mm Square', 'Drive Head - 130mm Square DIGGA']
+        gusset_map = {
+             'dhead_100_110_mm': {
+                # Hollow Bars
+                'Hollow Bar - OD128mm WT 11.5mm': "Gusset - 100mm Drive 150mm Tube",
+                'Hollow Bar - OD150mm ID120mm': "Gusset - 100mm Drive 150mm Tube",
+                'Hollow Bar - OD152mm WT 26mm': "Gusset - 100mm Drive 150mm Tube",
+                'Hollow Bar - OD152mm WT 33.5mm': "Gusset - 100mm Drive 150mm Tube",
+                'Hollow Bar - OD168mm WT 21.5mm': "Gusset - 100mm Drive 170mm Tube",
+                'Hollow Bar - OD168mm WT 29mm': "Gusset - 100mm Drive 170mm Tube",
+                'Hollow Bar - OD170mm ID140mm': "Gusset - 100mm Drive 170mm Tube",
+                'Hollow Bar - OD180 ID150': "Gusset - 100mm Drive 170mm Tube",
+                'Hollow bar - OD200 ID150': "Gusset - 100mm Drive 170mm Tube",
+                'Hollow Bar - OD219mm WT 25mm': "Gusset - 100mm Drive 219mm Tube",
+                # Pipes
+                'Pipe - OD168mm WT6.4mm': "Gusset - 100mm Drive 170mm Tube",
+                'Pipe - OD168mm WT4.8mm': "Gusset - 100mm Drive 170mm Tube",
+                'Pipe - OD168mm WT11mm': "Gusset - 100mm Drive 170mm Tube",
+                'Pipe - OD177mm WT 8mm': "Gusset - 100mm Drive 170mm Tube",
+                'Pipe - OD219mm WT8.2mm': "Gusset - 100mm Drive 219mm Tube",
+                'Pipe - OD219mm WT6.4mm': "Gusset - 100mm Drive 219mm Tube",
+                'Pipe - OD219mm WT12.7mm': "Gusset - 100mm Drive 219mm Tube",
+            },
+            'dhead_130_mm': {
+                # Hollow Bars
+                'Hollow Bar - OD150mm ID120mm': "Gusset - 130mm Drive 150mm Tube",
+                'Hollow Bar - OD152mm WT 26mm': "Gusset - 130mm Drive 150mm Tube",
+                'Hollow Bar - OD152mm WT 33.5mm': "Gusset - 130mm Drive 150mm Tube",
+                'Hollow Bar - OD168mm WT 21.5mm': "Gusset - 130mm Drive 170mm Tube",
+                'Hollow Bar - OD168mm WT 29mm': "Gusset - 130mm Drive 170mm Tube",
+                'Hollow Bar - OD170mm ID140mm': "Gusset - 130mm Drive 170mm Tube",
+                'Hollow Bar - OD180 ID150': "Gusset - 130mm Drive 170mm Tube",
+                'Hollow bar - OD200 ID150': "Gusset - 130mm Drive 170mm Tube",
+                'Hollow Bar - OD219mm WT 25mm': "Gusset - 130mm Drive 219mm Tube",
+                'Hollow bar - OD273mm WT14': "Gusset - 130mm Drive 273mm Tube",
+                'Hollow Bar - OD273mm WT 25mm': "Gusset - 130mm Drive 273mm Tube",
+                'Hollow Bar - OD273mm WT 32mm': "Gusset - 130mm Drive 273mm Tube",
+                'Hollow Bar - OD323mm WT25mm': "Gusset - 130mm Drive 323mm Tube",
+                'Hollow Bar - OD323mm WT30mm': "Gusset - 130mm Drive 323mm Tube",
+                'Hollow Bar - OD356 ID306': "Gusset - 130mm Drive 323mm Tube",
+                'Hollow bar - OD457mm T35mm': "Gusset - 130mm Drive 323mm Tube",
+                'Hollow bar - OD457mm T25mm': "Gusset - 130mm Drive 323mm Tube",
+                # Pipes
+                'Pipe - OD168mm WT6.4mm': "Gusset - 130mm Drive 170mm Tube",
+                'Pipe - OD168mm WT4.8mm': "Gusset - 130mm Drive 170mm Tube",
+                'Pipe - OD168mm WT11mm': "Gusset - 130mm Drive 170mm Tube",
+                'Pipe - OD177mm WT 8mm': "Gusset - 130mm Drive 170mm Tube",
+                'Pipe - OD219mm WT8.2mm': "Gusset - 130mm Drive 219mm Tube",
+                'Pipe - OD219mm WT6.4mm': "Gusset - 130mm Drive 219mm Tube",
+                'Pipe - OD219mm WT12.7mm': "Gusset - 130mm Drive 219mm Tube",
+                'Pipe - OD273mm WT9.3mm': "Gusset - 130mm Drive 273mm Tube",
+                'Pipe - OD273mm WT6.4mm': "Gusset - 130mm Drive 273mm Tube",
+                'Pipe - OD273mm WT12.7mm': "Gusset - 130mm Drive 273mm Tube",
+                'Pipe - OD323mm WT9.75mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD323mm WT9.5mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD323mm WT6.4mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD323mm WT12.7mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD355 WT9.5mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD355mm WT12.7mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - 406mm 9.5mm WT': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD406mm WT12.7mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD457mm WT9.5mm': "Gusset - 130mm Drive 323mm Tube",
+                'Pipe - OD457mm WT15.9mm': "Gusset - 130mm Drive 323mm Tube",
+            }
+        }
+        d_head = ''
+        if drive_head in dhead_100_110_mm:
+            d_head = 'dhead_100_110_mm'
+        elif drive_head in dhead_130_mm:
+            d_head = 'dhead_130_mm'
+        gusset_label = gusset_map.get(d_head, {}).get(centre_tube)
+        return (gusset_label, 1) if gusset_label else (None, 0)
 
     def _get_extension_bar_center_tube_gusset(self, drive_head, center_tube):
         """
