@@ -826,6 +826,26 @@ class ProductProduct(models.Model):
             _logger.exception(f"Unexpected error in _get_cflight_qty for type={type}: {e}")
             return 0
 
+    def _find_flight_id(self, base_od):
+        Product = self.env['product.product']
+
+        candidates = []
+        for tolerance in range(0, 6):
+            candidates.append(base_od + tolerance)
+
+        flights = Product.search([
+            ('name', 'like', 'Flight -'),
+        ])
+
+        valid_ids = []
+        for p in flights:
+            m = re.search(r'ID(\d+)', p.name)
+            if m:
+                pid = int(m.group(1))
+                if pid in candidates:
+                    valid_ids.append(pid)
+        return min(valid_ids) if valid_ids else None
+
     def _get_flight_combination(self, flight_pt, flight_od, diameter, center_tube, rotation):
         """
         Builds a non-stocked flight string from the given values.
@@ -866,20 +886,22 @@ class ProductProduct(models.Model):
         od_value = f"OD{diameter - 20}" if diameter < 1500 else f"OD{diameter - 30}"
 
         # ID based on center_tube table
-        flight_id = ""
+        flight_od = 0
         od_match = re.search(r'OD(\d+)', center_tube)
         mm_match = re.search(r'-\s*(\d+)', center_tube)
 
         if od_match:
-            flight_id = int(od_match.group(1))
+            flight_od = int(od_match.group(1))
         if mm_match:
-            flight_id = int(mm_match.group(1))
+            flight_od = int(mm_match.group(1))
 
         pitch, thickness, turns = _parse_flight_values(flight_pt)
 
+        # Get the smallest ID of the available flights
+        flight_id = self._find_flight_id(flight_od)
         # Combine flight attribute name
         od_value = f"OD{diameter - 20}" if diameter < 1500 else f"OD{diameter - 30}"
-        id_value = f"ID{flight_id}"
+        id_value = f"ID{str(flight_id)}"
         pitch = f"P{pitch}"
         thickness = f"T{thickness}"
         f_rotation = "RH" if rotation == 'Right Hand Rotation' else "LH"
@@ -906,12 +928,12 @@ class ProductProduct(models.Model):
         flight = ""
         if not _lead and not _carrier:
             flight = "Lead Flight & Carrier Flights"
-        elif not _lead:
+        if not _lead:
             flight = "Lead Flight"
-        elif not _carrier:
+        if not _carrier:
             flight = "Carrier Flight"
 
-        if not override_bom:
+        if not _lead or not _carrier and not override_bom:
             raise ValidationError(f"Opss! {flight} is not available, please review the selection or Override BOM.")
 
         # Compute the carrier qty
@@ -922,13 +944,12 @@ class ProductProduct(models.Model):
         else:
             lead_qty = 2
 
-        
-        le_flight = lead_flight if not override_bom else None
-        ca_flight = carrier_flight if not override_bom else None
-        return [
-            (le_flight, lead_qty if lead_flight else 0),
-            (ca_flight, carrier_qty if carrier_flight else 0)
+        _none = (None, 0)
+        lst = [
+            (lead_flight, lead_qty) if _lead and override_bom or _lead and not override_bom else _none,
+            (carrier_flight, carrier_qty) if _carrier and override_bom or _carrier and not override_bom else _none
         ]
+        return lst
 
     def _get_stock_lead_carrier_flight(self, auger_type, diameter, lead_flight, carrier_flight, flighted_length, carrier_qty):
         """
