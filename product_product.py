@@ -492,11 +492,11 @@ class ProductProduct(models.Model):
     def _get_tube_guesset(self, drive_head, centre_tube):
         """
         Returns the gusset component based on drive head and center shaft.
-        
+
         Args:
             drive_head (str): The name of the drive head.
             centre_tube (str): The name of the center shaft.
-        
+
         Returns:
             tuple or None: A tuple like ("Gusset - 100mm Drive 150mm Tube", 1) or None if not applicable.
         """
@@ -738,7 +738,7 @@ class ProductProduct(models.Model):
         pilot_offset = pilot_support_map.get(pilot_supp, 0)
 
         # round((o_length - 100 - pilot_offset) / MM_TO_M, 2) --> old formula
-        
+
         drive_head_map = {
             "Drive Head - 65mm Round": round_meters((o_length - 100 - pilot_offset)),
             "Drive Head - 65mm Square": round_meters((o_length - 100 - pilot_offset)),
@@ -797,13 +797,13 @@ class ProductProduct(models.Model):
 
             pitch = int(p_match.group(1)) if p_match else 0
             turns = float(r_match.group(1)) if r_match else 1
-    
+
             return pitch, turns
 
         l_pitch = l_no_turn = c_pitch = c_no_turn = 0
         if lead_flight or carrier_flight:
-            l_pitch, l_no_turn = _get_pitch(lead_flight or 0)
-            c_pitch, c_no_turn = _get_pitch(carrier_flight or 0)
+            l_pitch, l_no_turn = _get_pitch(lead_flight or "")
+            c_pitch, c_no_turn = _get_pitch(carrier_flight or "")
 
             qty = self._get_cflight_qty(type, flight_length_num, l_pitch, l_no_turn, c_pitch, c_no_turn, teeth)
             return qty
@@ -819,7 +819,7 @@ class ProductProduct(models.Model):
         if denominator == 0:
             _logger.warning(f"Division by zero prevented for type={type}. carrier_pitch={carrier_pitch}, c_no_turn={c_no_turn}")
             return 0
-    
+
         try:
             if type in auger_type:
                 qty = (flight_length_num - (lead_pitch * l_no_turn)) / denominator
@@ -833,136 +833,123 @@ class ProductProduct(models.Model):
                 qty = (flight_length_num - (lead_pitch * l_no_turn * 0.4)) / denominator
             else:
                 qty = 0
-    
+
             qty = math.ceil(qty * 2) / 2
             return qty
-    
+
         except Exception as e:
             _logger.exception(f"Unexpected error in _get_cflight_qty for type={type}: {e}")
             return 0
 
-    def _find_flight_product(self, base_id, od, pitch, thickness, rotation, no_turns):
-        Product = self.env['product.product']
+    def _parse_flight_spec(self, name):
+        """Parse flight product name into its component values.
+        
+        Example: 'Flight - OD1370 ID276 P900 T30 LH R1.2'
+        Returns dict with od, id, pitch, thickness, rotation, no_turns or None if unparseable.
+        """
+        od = re.search(r'OD(\d+)', name)
+        id_ = re.search(r'ID(\d+)', name)
+        pitch = re.search(r'P(\d+)', name)
+        thickness = re.search(r'T(\d+)', name)
+        rotation = re.search(r'\b(RH|LH)\b', name)
+        turns = re.search(r'R(\d+\.\d+)', name)
+
+        if not (od and id_ and pitch and thickness):
+            return None
     
-        flights = Product.search([
-            ('name', 'like', 'Flight -'),
-        ])
+        turns_val = float(turns.group(1)) if turns else 0
+        return {
+            'od': int(od.group(1)),
+            'id': int(id_.group(1)),
+            'pitch': int(pitch.group(1)),
+            'thickness': int(thickness.group(1)),
+            'rotation': rotation.group(1) if rotation else "RH" ,
+            'no_turns': f"R{turns_val}" if turns_val > 1 else "",
+        }
+
+    def _find_flight_product(self, base_id, od, pitch, thickness, rotation, no_turns):
+        """Find the best matching flight product for a centre tube.
+    
+        Matches on OD, pitch, thickness, rotation, and turns.
+        The flight's ID must fall within tolerance of the centre tube OD: base_id <= ID <= base_id + 5.
+        Returns the product with the smallest qualifying ID.
+        """
+        Product = self.env['product.product']
+        flights = Product.search([('name', 'like', 'Flight -')])
     
         best_product = None
         best_id_value = None
     
-        for p in flights:
-            name = p.name
-    
-            # Extract values from product name
-            od_match = re.search(r'OD(\d+)', name)
-            id_match = re.search(r'ID(\d+)', name)
-            p_match = re.search(r'P(\d+)', name)
-            t_match = re.search(r'T(\d+)', name)
-            r_match = re.search(r'\b(RH|LH)\b', name)
-            no_r_match = re.search(r'R(\d+\.\d+)', name)
-    
-            if not (od_match and id_match and p_match and t_match and r_match):
+        for product in flights:
+            spec = self._parse_flight_spec(product.name)
+            if spec is None:
                 continue
-    
-            p_od = int(od_match.group(1))
-            p_id = int(id_match.group(1))
-            p_pitch = int(p_match.group(1))
-            p_thickness = int(t_match.group(1))
-            p_rotation = r_match.group(1)
-            p_no_rotation = ""
-            if no_r_match:
-                p_no_rotation_val = float(no_r_match.group(1))
-                p_no_rotation = f"R{p_no_rotation_val}" if p_no_rotation_val > 1 else ""
 
-            # Filter by OD, pitch, thickness, rotation, and no. of turns
-            if (
-                p_od == od and
-                p_pitch == pitch and
-                p_thickness == thickness and
-                p_rotation == rotation and
-                p_no_rotation == no_turns
-            ):
-                # ID tolerance: -0 / +5 (must be >= base_id and <= base_id + 5)
-                if p_id >= base_id and p_id <= base_id + 5:
-                    # Pick the smallest qualifying ID
-                    if best_id_value is None or p_id < best_id_value:
-                        best_product = p
-                        best_id_value = p_id
+            # Match on OD, pitch, thickness, rotation, and no. of turns
+            matches = (
+                spec['od'] == od
+                and spec['pitch'] == pitch
+                and spec['thickness'] == thickness
+                and spec['rotation'] == rotation
+                and spec['no_turns'] == no_turns
+            )
+            if not matches:
+                continue
+
+            # ID tolerance: -0 / +5
+            if base_id <= spec['id'] <= base_id + 5:
+                if best_id_value is None or spec['id'] < best_id_value:
+                    best_product = product
+                    best_id_value = spec['id']
 
         return best_product, best_id_value
 
-    def _get_flight_combination(self, flight_pt, flight_od, diameter, center_tube, rotation):
-
-        def _parse_flight_values(flight_pt):
-            """
-            Extract pitch, thickness, and optionally turns from a flight string.
-            """
-            pitch = thickness = turns = 0
-    
-            # Look for Pitch (P...), Thickness (T...), and Turns (R...)
+    def _get_flight_combination(self, flight_pt, flight_od, center_tube, rotation):
+        """Determine the best flight product for a given centre tube and return its name."""
+        def _parse_flight_params(flight_pt):
+            """Extract pitch, thickness, and formatted turns string from a flight spec string."""
             p_match = re.search(r'P(\d+)', flight_pt)
             t_match = re.search(r'T(\d+)', flight_pt)
             r_match = re.search(r'R(\d+\.\d+)', flight_pt)
+        
+            pitch = int(p_match.group(1)) if p_match else 0
+            thickness = int(t_match.group(1)) if t_match else 0
+            turns_val = float(r_match.group(1)) if r_match else 0
+            turns_str = f"R{turns_val}" if turns_val > 1 else ""
     
-            if p_match:
-                pitch = int(p_match.group(1))
-            if t_match:
-                thickness = int(t_match.group(1))
-            if r_match:
-                turns_num = float(r_match.group(1))
-                turns = turns_num if turns_num > 1 else 0
-            return pitch, thickness, turns
+            return pitch, thickness, turns_str
+
+        def _extract_od(text):
+            """Extract OD integer from a string like 'OD1370' or 'OD273mm'."""
+            match = re.search(r'OD(\d+)', text)
+            return int(match.group(1)) if match else 0
 
         if not flight_pt and not flight_od:
             return ""
 
-        # Extract base ID from center_tube OD
-        flight_id_match = 0
-        flight_od_value = 0
-    
-        od_match = re.search(r'OD(\d+)', center_tube)
-        flight_od_match = re.search(r'OD(\d+)', flight_od)
-    
-        if od_match:
-            flight_id_match = int(od_match.group(1))
-        if flight_od_match:
-            flight_od_value = int(flight_od_match.group(1))
-    
-        pitch, thickness, turns = _parse_flight_values(flight_pt)
-    
+        base_id = _extract_od(center_tube)
+        flight_od_value = _extract_od(flight_od)
+        pitch, thickness, turns_str = _parse_flight_params(flight_pt)
         f_rotation = "RH" if rotation == 'Right Hand Rotation' else "LH"
-        turns_str = f"R{turns}" if turns > 1 else ""
     
-        # Find best flight — pass raw ints, not formatted strings
-        best_product, best_id = self._find_flight_product(
-            base_id=flight_id_match,
+        best_product, _ = self._find_flight_product(
+            base_id=base_id,
             od=flight_od_value,
             pitch=pitch,
             thickness=thickness,
             rotation=f_rotation,
             no_turns=turns_str,
         )
-    
-        if best_product:
-            # Use the actual matched flight product name
-            return best_product.name
 
-        # Fallback: build a non-stocked flight string
-        od_str = f"OD{flight_od_value}"
-        id_str = f"ID{flight_id_match}"
-        pitch_str = f"P{pitch}"
-        thickness_str = f"T{thickness}"
-
-        return f"Flight - {od_str} {id_str} {pitch_str} {thickness_str} {f_rotation} {turns_str}".strip()
+        return best_product.name if best_product else ""
 
     def _get_lead_or_carrier_flight(self, type, diameter, center_tube, l_pt, l_od, c_pt, c_od, rotation, flighted_length, override_bom, teeth):
         """
         Returns a list of tuples (flight_string, quantity) for lead and carrier flights.
         """
         # Build flight strings
-        lead_flight = self._get_flight_combination(l_pt, l_od, diameter, center_tube, rotation)
-        carrier_flight = self._get_flight_combination(c_pt, c_od, diameter, center_tube, rotation)
+        lead_flight = self._get_flight_combination(l_pt, l_od, center_tube, rotation)
+        carrier_flight = self._get_flight_combination(c_pt, c_od, center_tube, rotation)
 
         def _check_flights(flight):
             flight = flight.strip()
@@ -1014,7 +1001,7 @@ class ProductProduct(models.Model):
             (lead_flight or None, lead_qty if lead_flight else 0),
             (carrier_flight or None, carrier_qty if carrier_flight else 0)
         ]
-    
+
     def _get_non_or_stock_flights(self, non_stock, stock):
         """
         Returns a list with two tuples:
@@ -1134,14 +1121,14 @@ class ProductProduct(models.Model):
                 offset,
                 teeth_config['divisor']
             )
-            
+
             result.extend([
                 (teeth_config['parts'][0], teeth_qty),
                 (teeth_config['parts'][1], teeth_qty - 4),
             ])
-            
+
         result.extend(pilot_parts)
-        
+
         return result
 
     def _get_teeth_qty_even(self, diameter, mm1, mm2, mm3):
@@ -1150,6 +1137,12 @@ class ProductProduct(models.Model):
         return qty
 
     def _get_teeth_zed(self, diameter, center_tube, teeth):
+
+        def _get_zed_teeth_qty_even(diameter, mm1, mm2, mm3):
+            qty = ((diameter - mm1 - mm2) / mm3) * 2
+            qty = int(round(qty / 2.0) * 2)  # Round to nearest even
+            return qty
+
         # Parse to get the OD number of the center tube
         od_match = re.search(r'OD(\d+)', center_tube)
         center_tube_od = int(od_match.group(1)) if od_match else 0
@@ -1189,16 +1182,16 @@ class ProductProduct(models.Model):
         result = []
         if teeth_config:
             offset = 20 if diameter < 1500 else 30
-            
-            teeth_qty = self._get_teeth_qty_even(
+
+            teeth_qty = _get_zed_teeth_qty_even(
                 diameter,
                 center_tube_od,
                 offset,
                 teeth_config['divisor']
             )
-            
+
             weld_qty = int(round(teeth_qty / 2))
-            
+
             result.extend([
                 (teeth_config['parts'][0], teeth_qty),
                 (teeth_config['parts'][1], teeth_qty),
@@ -1218,7 +1211,7 @@ class ProductProduct(models.Model):
         qty = ((diameter - mm1 - mm2) / mm3) * 3 + 4
         qty = round(qty)  # Round to nearest whole number
         return qty
-    
+
     def _get_teeth_triad_rock(self, diameter, teeth, pilot, rotation):
         ROTATION = "LH" if rotation == "Left Hand Rotation" else "RH"
         TRIAD_ROCK_TEETH_CONFIG = {
@@ -1253,7 +1246,7 @@ class ProductProduct(models.Model):
                 offset,
                 teeth_config['divisor']
             )
-            
+
             result.extend([
                 (teeth_config['parts'][0], teeth_qty),
                 (teeth_config['parts'][1], teeth_qty - 4),
@@ -1261,7 +1254,7 @@ class ProductProduct(models.Model):
 
         result.extend(pilot_parts)
         return result
-        
+
     def _get_teeth_clay_shale(self, diameter, teeth, pilot, rotation):
         pilot_support_od_ar150 = 78  # for AR150 (D<300)
         ROTATION = "LH" if rotation == "Left Hand Rotation" else "RH"
@@ -1293,14 +1286,14 @@ class ProductProduct(models.Model):
                 ],
             },
         }
-        
+
         CLAY_SHALE_DIAMETER_CONFIG = {
             300: {'teeth_qty': 4, 'holder': '300mm Clay Shale Teeth Holder'},
             400: {'teeth_qty': 8, 'holder': '400mm Clay Shale Teeth Holder'},
             450: {'teeth_qty': 8, 'holder': '450mm Clay Shale Teeth Holder'},
             600: {'teeth_qty': 12, 'holder': '600mm Clay Shale Teeth Holder'},
         }
-        
+
         CLAY_SHALE_PILOT_CONFIG = {
             'Hex Auger Torque Fishtail Pilot': {
                 'parts': [
@@ -1371,12 +1364,12 @@ class ProductProduct(models.Model):
                 (teeth_config['parts'][1], teeth_qty),
             ]
             result.extend(pilot_config.get('parts', []))
-            
+
             if pilot_config.get('teeth_3'):
                 result.append(pilot_config['teeth_3'])
 
             return result
-        
+
         # Handle AR150 Teeth
         if diameter < 300:
             # D<300: formula-based qty
@@ -1397,7 +1390,7 @@ class ProductProduct(models.Model):
                 ('AR150 Teeth', diameter_config['teeth_qty']),
                 (diameter_config['holder'], 2),
             ]
-            
+
             # Add gauge teeth if applicable
             if teeth_config.get('gauge_teeth'):
                 result.extend(teeth_config['gauge_teeth'])
@@ -1406,13 +1399,13 @@ class ProductProduct(models.Model):
 
         # Add pilot parts
         result.extend(pilot_config.get('parts', []))
-        
+
         # Add teeth 3 from pilot config
         if pilot_config.get('teeth_3'):
             result.extend(pilot_config['teeth_3'])
 
         return result
-    
+
     def _get_teeth_blade(self, diameter, teeth, pilot):
         BLADE_TEETH_CONFIG = {
                 'Blade Teeth': {
