@@ -427,26 +427,25 @@ class ProductProduct(models.Model):
 
         reference = product.display_name
         components = self._get_bored_pile_component(product)
+        # Filter out empty/invalid components before creating BOM
+        components = [c for c in components if c and len(c) >= 2 and c[0] and c[1]]
         _logger.info("bored pile components... %s", components)
-        # raise ValidationError(f"This is bored... {components}")
-        self._create_bom_components(product, reference, components)
+        if components:
+            self._create_bom_components(product, reference, components)
 
     def _get_bored_pile_component(self, product):
         """
-        param: product.template to get the product attributes 
-        return: a list of items to create bom components 
+        param: product.template to get the product attributes
+        return: a list of items to create bom components
         """
-        components = []
-        p_name = product.product_tmpl_id.name
         attributes = {attr.attribute_id.name: attr.name for attr in product.product_template_attribute_value_ids}
-        type = attributes.get('Type', '')
+        auger_type = attributes.get('Type', '')
         diameter = attributes.get('Auger Diameter', '')
         drive_head = attributes.get('Drive Head', '')
         overall_length = attributes.get('Overall Length', '')
         flighted_length = attributes.get('Flighted Length', '')
         rotation = attributes.get('Rotation', '')
         teeth = attributes.get('Teeth', '')
-        reamer_teeth = attributes.get('Reamer Teeth')
         pilot = attributes.get('Pilot', '')
         center_tube = attributes.get('Centre Tube', '')
         lead_flight_od = attributes.get('Lead Flight OD', '')
@@ -455,18 +454,20 @@ class ProductProduct(models.Model):
         carrier_lead_flight_pt = attributes.get('Carrier Flight Pitch', '')
         override_bom = attributes.get('Override BOM', '')
 
-        if type in ['Taper Rock', 'Dual Rock']:
-            components = self._get_bp_dual_taper_rock(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom)
-        elif type == 'Triad Rock':
-            components = self._get_bp_triad_rock(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom)
-        elif type in ['ZED 25mm', 'ZED 32mm', 'ZED 40mm', 'ZED 50mm']: 
-            components = self._get_bp_zed(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom)
-        elif type == 'Clay/Shale':
-            components = self._get_bp_clay_shale(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom)
+        args = (auger_type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom)
+        type_lower = auger_type.strip().lower()
+
+        if type_lower in ('taper rock', 'dual rock'):
+            return self._get_bp_dual_taper_rock(*args)
+        elif type_lower == 'triad rock':
+            return self._get_bp_triad_rock(*args)
+        elif type_lower in ('zed 25mm', 'zed 32mm', 'zed 40mm', 'zed 50mm'):
+            return self._get_bp_zed(*args)
+        elif type_lower == 'clay/shale':
+            return self._get_bp_clay_shale(*args)
         else:
-            # list of items for blade
-            components = self._get_bp_blade(type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom)
-        return components
+            return self._get_bp_blade(*args)
+
 
     def _get_base_plate(self, dhead):
         exclude_dhead = {
@@ -793,7 +794,7 @@ class ProductProduct(models.Model):
                 We parse the flights to get the pitch and the number of turns
             """
             p_match = re.search(r'P(\d+)', res)
-            r_match = re.search(r'R(\d+\.\d+)', res)
+            r_match = re.search(r'R(\d+(?:\.\d+)?)', res)
 
             pitch = int(p_match.group(1)) if p_match else 0
             turns = float(r_match.group(1)) if r_match else 1
@@ -810,32 +811,29 @@ class ProductProduct(models.Model):
         return 0
 
     def _get_cflight_qty(self, type, flight_length_num, lead_pitch, l_no_turn, carrier_pitch, c_no_turn, teeth):
-        auger_type = ['Dual Rock', 'Taper Rock', 'ZED 25mm', 'ZED 32mm', 'ZED 40mm', 'ZED 50mm']
-        qty = 0
+        type_lower = type.strip().lower()
+        auger_types = ('dual rock', 'taper rock', 'zed 25mm', 'zed 32mm', 'zed 40mm', 'zed 50mm')
+        ar150_teeth = ('ar150 teeth', 'ar150 teeth w/ gauge teeth', 'blade teeth', 'blade teeth w/ gauge teeth')
 
-        ar150_teeth = ['AR150 Teeth', 'AR150 Teeth w/ Gauge Teeth', 'Blade Teeth', 'Blade Teeth w/ Gauge Teeth']
-        # Validate to avoid ZeroDivisionError
         denominator = carrier_pitch * c_no_turn
         if denominator == 0:
             _logger.warning(f"Division by zero prevented for type={type}. carrier_pitch={carrier_pitch}, c_no_turn={c_no_turn}")
             return 0
 
         try:
-            if type in auger_type:
+            if type_lower in auger_types:
                 qty = (flight_length_num - (lead_pitch * l_no_turn)) / denominator
-            elif type in ['Clay/Shale', 'Blade']:
-                _logger.info(f"Clay/Blade type calculation: flight_length_num={flight_length_num}, lead_pitch={lead_pitch}, l_no_turn={l_no_turn}, carrier_pitch={carrier_pitch}, c_no_turn={c_no_turn}")
-                if teeth in ar150_teeth:
+            elif type_lower in ('clay/shale', 'blade'):
+                if teeth.strip().lower() in ar150_teeth:
                     qty = (flight_length_num - (lead_pitch * l_no_turn)) / denominator * 2
                 else:
                     qty = (flight_length_num - (lead_pitch * l_no_turn)) / denominator
-            elif type in ['Triad Rock']:
+            elif type_lower == 'triad rock':
                 qty = (flight_length_num - (lead_pitch * l_no_turn * 0.4)) / denominator
             else:
-                qty = 0
+                return 0
 
-            qty = math.ceil(qty * 2) / 2
-            return qty
+            return math.ceil(qty * 2) / 2
 
         except Exception as e:
             _logger.exception(f"Unexpected error in _get_cflight_qty for type={type}: {e}")
@@ -851,19 +849,19 @@ class ProductProduct(models.Model):
         id_ = re.search(r'ID(\d+)', name)
         pitch = re.search(r'P(\d+)', name)
         thickness = re.search(r'T(\d+)', name)
-        rotation = re.search(r'\b(RH|LH)\b', name)
-        turns = re.search(r'R(\d+\.\d+)', name)
+        rotation = re.search(r'\b(RH|LH)\b', name, re.IGNORECASE)
+        turns = re.search(r'R(\d+(?:\.\d+)?)', name)
 
         if not (od and id_ and pitch and thickness):
             return None
-    
+
         turns_val = float(turns.group(1)) if turns else 0
         return {
             'od': int(od.group(1)),
             'id': int(id_.group(1)),
             'pitch': int(pitch.group(1)),
             'thickness': int(thickness.group(1)),
-            'rotation': rotation.group(1) if rotation else "RH" ,
+            'rotation': rotation.group(1).upper() if rotation else "RH",
             'no_turns': f"R{turns_val}" if turns_val > 1 else "",
         }
 
@@ -875,7 +873,7 @@ class ProductProduct(models.Model):
         Returns the product with the smallest qualifying ID.
         """
         Product = self.env['product.product']
-        flights = Product.search([('name', 'like', 'Flight -')])
+        flights = Product.search([('name', 'ilike', 'Flight -')])
     
         best_product = None
         best_id_value = None
@@ -890,7 +888,7 @@ class ProductProduct(models.Model):
                 spec['od'] == od
                 and spec['pitch'] == pitch
                 and spec['thickness'] == thickness
-                and spec['rotation'] == rotation
+                and spec['rotation'].upper() == rotation.upper()
                 and spec['no_turns'] == no_turns
             )
             if not matches:
@@ -910,8 +908,8 @@ class ProductProduct(models.Model):
             """Extract pitch, thickness, and formatted turns string from a flight spec string."""
             p_match = re.search(r'P(\d+)', flight_pt)
             t_match = re.search(r'T(\d+)', flight_pt)
-            r_match = re.search(r'R(\d+\.\d+)', flight_pt)
-        
+            r_match = re.search(r'R(\d+(?:\.\d+)?)', flight_pt)
+
             pitch = int(p_match.group(1)) if p_match else 0
             thickness = int(t_match.group(1)) if t_match else 0
             turns_val = float(r_match.group(1)) if r_match else 0
@@ -947,24 +945,23 @@ class ProductProduct(models.Model):
         """
         Returns a list of tuples (flight_string, quantity) for lead and carrier flights.
         """
-        # Build flight strings
         lead_flight = self._get_flight_combination(l_pt, l_od, center_tube, rotation)
         carrier_flight = self._get_flight_combination(c_pt, c_od, center_tube, rotation)
 
         def _check_flights(flight):
-            flight = flight.strip()
+            if not flight:
+                return False
             return self.env['product.template'].search_count([
-                ('name', '=', flight)
+                ('name', '=ilike', flight.strip())
             ]) > 0
 
         _lead = _check_flights(lead_flight)
         _carrier = _check_flights(carrier_flight)
 
-        # raise ValidationError(f"{lead_flight} - {carrier_flight}")
         missing = []
-        if not _lead:
+        if not _lead and l_pt and l_od:
             missing.append("Lead Flight")
-        if not _carrier:
+        if not _carrier and c_pt and c_od:
             missing.append("Carrier Flight")
 
         if missing and not override_bom:
@@ -973,20 +970,22 @@ class ProductProduct(models.Model):
                 "please review the selection or Override BOM."
             )
 
-        # Compute the carrier qty
-        carrier_qty = self._get_carrier_flight_qty(type, lead_flight, carrier_flight, flighted_length, teeth)
+        # Use lead flight pitch attribute as fallback when lead flight product is unavailable
+        # so the carrier flight qty still considers the lead flight pitch
+        lead_flight_for_qty = lead_flight or l_pt
+        carrier_qty = self._get_carrier_flight_qty(type, lead_flight_for_qty, carrier_flight, flighted_length, teeth)
 
-        if type == "Triad Rock":
+        type_lower = type.strip().lower()
+        if type_lower == "triad rock":
             lead_qty = 3 if diameter > 650 else 1
         else:
             lead_qty = 2
 
         _none = (None, 0)
-        lst = [
-            (lead_flight, lead_qty) if _lead and override_bom or _lead and not override_bom else _none,
-            (carrier_flight, carrier_qty) if _carrier and override_bom or _carrier and not override_bom else _none
+        return [
+            (lead_flight, lead_qty) if _lead else _none,
+            (carrier_flight, carrier_qty) if _carrier else _none,
         ]
-        return lst
 
     def _get_stock_lead_carrier_flight(self, auger_type, diameter, lead_flight, carrier_flight, flighted_length, carrier_qty):
         """
@@ -1318,7 +1317,7 @@ class ProductProduct(models.Model):
                     ('End Cap - Suit Hex Pilot Support', 1),
                 ],
                 'teeth_3': ('BC86TB - TEBCO 22mm Teeth', 4),
-            },
+             },
             '25mm Teeth Pilot': {
                 'parts': [
                     ('Rock Auger Pilot - 25mm Shank 75mm square', 1),
@@ -3154,11 +3153,13 @@ class ProductProduct(models.Model):
         bom_lines = []
         uom_meter = self.env.ref('uom.product_uom_meter', raise_if_not_found=False)
         unit = self.env.ref('uom.product_uom_unit', raise_if_not_found=False)
+        keywords = {'Permanent Casing', 'Hollow Bar', 'Flat Bar', 'Pipe', 'Parallel Flange Channel', 'Bright Bar'}
 
         for component_name, qty in components:
-            keywords = {'Permanent Casing', 'Hollow Bar', 'Flat Bar', 'Pipe', 'Parallel Flange Channel', 'Bright Bar'}
+            if not component_name or not qty:
+                continue
             uom = uom_meter if any(keyword in component_name for keyword in keywords) else unit
-            component = self.env['product.product'].search([('name', '=', component_name)], limit=1)
+            component = self.env['product.product'].search([('name', '=ilike', component_name)], limit=1)
             if not component:
                 component = self.env['product.product'].create({
                     'name': component_name,
