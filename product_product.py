@@ -427,8 +427,10 @@ class ProductProduct(models.Model):
 
         reference = product.display_name
         components = self._get_bored_pile_component(product)
-        # Filter out empty/invalid components before creating BOM
-        components = [c for c in components if c and len(c) >= 2 and c[0] and c[1]]
+        components = [
+            c for c in components
+            if c and len(c) >= 2 and c[0] and c[1]
+        ]
         _logger.info("bored pile components... %s", components)
         if components:
             self._create_bom_components(product, reference, components)
@@ -438,7 +440,10 @@ class ProductProduct(models.Model):
         param: product.template to get the product attributes
         return: a list of items to create bom components
         """
-        attributes = {attr.attribute_id.name: attr.name for attr in product.product_template_attribute_value_ids}
+        attributes = {
+            attr.attribute_id.name: attr.name
+            for attr in product.product_template_attribute_value_ids
+        }
         auger_type = attributes.get('Type', '')
         diameter = attributes.get('Auger Diameter', '')
         drive_head = attributes.get('Drive Head', '')
@@ -450,11 +455,17 @@ class ProductProduct(models.Model):
         center_tube = attributes.get('Centre Tube', '')
         lead_flight_od = attributes.get('Lead Flight OD', '')
         lead_flight_pt = attributes.get('Lead Flight Pitch', '')
-        carrier_lead_flight_od = attributes.get('Carrier Flight OD', '')
-        carrier_lead_flight_pt = attributes.get('Carrier Flight Pitch', '')
+        carrier_od = attributes.get('Carrier Flight OD', '')
+        carrier_pt = attributes.get('Carrier Flight Pitch', '')
         override_bom = attributes.get('Override BOM', '')
 
-        args = (auger_type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom)
+        args = (
+            auger_type, diameter, drive_head,
+            overall_length, flighted_length, rotation,
+            teeth, pilot, center_tube,
+            lead_flight_od, lead_flight_pt,
+            carrier_od, carrier_pt, override_bom,
+        )
         type_lower = auger_type.strip().lower()
 
         if type_lower in ('taper rock', 'dual rock'):
@@ -467,7 +478,6 @@ class ProductProduct(models.Model):
             return self._get_bp_clay_shale(*args)
         else:
             return self._get_bp_blade(*args)
-
 
     def _get_base_plate(self, dhead):
         exclude_dhead = {
@@ -683,16 +693,16 @@ class ProductProduct(models.Model):
         }
         return zed_center_mapping.get(center_tube, "")
 
-    def _get_center_tube_zed(self, overall_length, drive_head, center_tube, zed_center):
-        """
-            return a component for center tube items and qty based on zed type
-        """
+    def _get_center_tube_zed(
+        self, overall_length, drive_head, center_tube, zed_center
+    ):
+        """Return center tube component and qty for ZED type."""
         match = re.search(r'\d+', overall_length)
         o_length = int(match.group()) if match else 0
         drive_head_map = {
-            "Drive Head - 65mm Round": [100],
-            "Drive Head - 65mm Square": [100],
-            "Drive Head - 75mm Square": [150],
+            "Drive Head - 65mm Round": [100, 0],
+            "Drive Head - 65mm Square": [100, 0],
+            "Drive Head - 75mm Square": [150, 0],
             "Drive Head - 100mm Square": [175, 25],
             "Drive Head - 110mm Square": [240, 25],
             "Drive Head - 130mm Square": [260, 32],
@@ -701,32 +711,42 @@ class ProductProduct(models.Model):
             "Drive Head - 150mm Square IMT": [260, 32],
             "Drive Head - 200mm Square Bauer": [457, 32],
             "Drive Head - 200mm Square MAIT": [345, 32],
-            "Drive Head - 4\" Lo Drill": [332, 25],
-            "Drive Head - 3\" Hex": [155],
-            "Drive Head - 2\" Hex": [135]
+            "Drive Head - 4\" Lo Drill": [300, 25],
+            "Drive Head - 3\" Hex": [155, 0],
+            "Drive Head - 2\" Hex": [135, 0],
         }
-        drive_head_num = drive_head_map.get(drive_head, 0)
-        drive_head_height = drive_head_num[0]
-        drive_head_base_plate = drive_head_num[1]
-        zed_height_map = {
-            "ZED Centre 150mm": round((o_length - drive_head_height - drive_head_base_plate - 133.5) / 1000, 2),
-            "ZED Centre 168mm": round((o_length - drive_head_height - drive_head_base_plate - 147.5) / 1000, 2),
-            "ZED Centre 219mm": round((o_length - drive_head_height - drive_head_base_plate - 163) / 1000, 2),
-            "ZED Centre 273mm": round((o_length - drive_head_height - drive_head_base_plate - 163) / 1000, 2)
-        }
-        return (center_tube, zed_height_map.get(zed_center, 0))
+        drive_head_num = drive_head_map.get(drive_head, [0, 0])
+        dh_height = drive_head_num[0]
+        dh_base = drive_head_num[1]
 
-    def _get_center_tube(self, overall_length, drive_head, center_tube, pilot_supp):
-        # round up meters 
+        zed_offsets = {
+            "ZED Centre 150mm": 133.5,
+            "ZED Centre 168mm": 147.5,
+            "ZED Centre 219mm": 163,
+            "ZED Centre 273mm": 163,
+        }
+        offset = zed_offsets.get(zed_center)
+        if offset is None:
+            return (center_tube, 0)
+        qty = round(
+            (o_length - dh_height - dh_base - offset) / 1000, 2
+        )
+        return (center_tube, qty)
+
+    def _get_center_tube(
+        self, overall_length, drive_head, center_tube, pilot_supp
+    ):
+        """Return center tube component with calculated length."""
         def round_meters(mm_value):
             value = Decimal(mm_value) / Decimal('1000')
-            return float(value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+            return float(value.quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP
+            ))
 
-        # pilot_support = pilot_supp[0] if pilot_supp else ""
         match = re.search(r'\d+', overall_length)
         o_length = int(match.group()) if match else 0
 
-        pilot_support_map = {
+        pilot_offset_map = {
             "Hex Auger Torque Fishtail Pilot": 75,
             "19.4mm Teeth Pilot": 75,
             "22mm Teeth Pilot": 75,
@@ -734,45 +754,50 @@ class ProductProduct(models.Model):
             "38/30 Teeth Pilot": 100,
             "Blade Auger Fishtail Pilot": 70,
         }
+        p_offset = pilot_offset_map.get(pilot_supp, 0)
 
-        MM_TO_M = 1000
-        pilot_offset = pilot_support_map.get(pilot_supp, 0)
-
-        # round((o_length - 100 - pilot_offset) / MM_TO_M, 2) --> old formula
-
+        # drive head height + base plate offset
         drive_head_map = {
-            "Drive Head - 65mm Round": round_meters((o_length - 100 - pilot_offset)),
-            "Drive Head - 65mm Square": round_meters((o_length - 100 - pilot_offset)),
-            "Drive Head - 75mm Square": round_meters((o_length - 150 - pilot_offset)),
-            "Drive Head - 100mm Square": round_meters((o_length - 175 - 25 - pilot_offset)),
-            "Drive Head - 110mm Square": round_meters((o_length - 240 - 25 - pilot_offset)),
-            "Drive Head - 130mm Square": round_meters((o_length - 260 - 32 - pilot_offset)),
-            "Drive Head - 130mm Square DIGGA": round_meters((o_length - 260 - 32 - pilot_offset)),
-            "Drive Head - 150mm Square": round_meters((o_length - 260 - 32 - pilot_offset)),
-            "Drive Head - 150mm Square IMT": round_meters((o_length - 260 - 32 - pilot_offset)),
-            "Drive Head - 200mm Square Bauer": round_meters((o_length - 457 - 32 - pilot_offset)),
-            "Drive Head - 200mm Square MAIT": round_meters((o_length - 345 - 32 - pilot_offset)),
-            "Drive Head - 4\" Lo Drill": round_meters((o_length - 332 - 25 - pilot_offset)),
-            "Drive Head - 3\" Hex": round_meters((o_length - 155 - pilot_offset)),
-            "Drive Head - 2\" Hex": round_meters((o_length - 135 - pilot_offset)),
+            "Drive Head - 65mm Round": [100, 0],
+            "Drive Head - 65mm Square": [100, 0],
+            "Drive Head - 75mm Square": [150, 0],
+            "Drive Head - 100mm Square": [175, 25],
+            "Drive Head - 110mm Square": [240, 25],
+            "Drive Head - 130mm Square": [260, 32],
+            "Drive Head - 130mm Square DIGGA": [260, 32],
+            "Drive Head - 150mm Square": [260, 32],
+            "Drive Head - 150mm Square IMT": [260, 32],
+            "Drive Head - 200mm Square Bauer": [457, 32],
+            "Drive Head - 200mm Square MAIT": [345, 32],
+            "Drive Head - 4\" Lo Drill": [300, 25],
+            "Drive Head - 3\" Hex": [155, 0],
+            "Drive Head - 2\" Hex": [135, 0],
         }
-        return (center_tube, drive_head_map.get(drive_head, 0))
+        drive_head_num = drive_head_map.get(drive_head, [0, 0])
+        dh_offset = drive_head_num[0]
+        dh_base = drive_head_num[1]
+        qty = round_meters(o_length - dh_offset - dh_base - p_offset)
+        return (center_tube, qty)
 
-    def _get_flight_brace_components(self, dhead, carrier_lead_flight_od, carrier_lead_flight_pt):
-        """
-        return: flight brace components
-            exclude: Not applicable to 65mm, 75mm, 100mm, 110mm, 4" Lo Drill, 3" Hex, 2" Hex and Custom Heads
-        """
+    def _get_flight_brace_components(
+        self, dhead, carrier_od, carrier_pt
+    ):
+        """Return flight brace components by diameter range."""
         exclude_dhead = {
-            'Drive Head - 65mm Round', 'Drive Head - 65mm Square', 'Drive Head - 75mm Square',
-            'Drive Head - 100mm Square', 'Drive Head - 110mm Square', 'Drive Head - 4" Lo Drill',
-            'Drive Head - 3" Hex', 'Drive Head - 2" Hex', 'Custom Head'
+            'Drive Head - 65mm Round',
+            'Drive Head - 65mm Square',
+            'Drive Head - 75mm Square',
+            'Drive Head - 100mm Square',
+            'Drive Head - 110mm Square',
+            'Drive Head - 4" Lo Drill',
+            'Drive Head - 3" Hex',
+            'Drive Head - 2" Hex',
+            'Custom Head',
         }
-
         if dhead in exclude_dhead:
             return []
 
-        fb_qty = 1 if carrier_lead_flight_od and carrier_lead_flight_pt else 2
+        fb_qty = 1 if carrier_od and carrier_pt else 2
         return {
             (0, 750): (None, 0),
             (750, 900): ("750mm flight brace 180mm long", fb_qty),
@@ -782,10 +807,11 @@ class ProductProduct(models.Model):
             (1350, 5000): ("1350mm+ flight brace 480mm long", fb_qty),
         }
 
-    def _get_carrier_flight_qty(self, type, lead_flight, carrier_flight, flighted_length, teeth):
-        """ 
-            We calculate the qty for carrier flight
-        """
+    def _get_carrier_flight_qty(
+        self, type, lead_flight, carrier_flight,
+        flighted_length, teeth
+    ):
+        """Calculate the qty for carrier flight."""
         flight_length = re.findall(r'\d+', flighted_length)[0]
         flight_length_num = int(flight_length)
 
@@ -806,44 +832,65 @@ class ProductProduct(models.Model):
             l_pitch, l_no_turn = _get_pitch(lead_flight or "")
             c_pitch, c_no_turn = _get_pitch(carrier_flight or "")
 
-            qty = self._get_cflight_qty(type, flight_length_num, l_pitch, l_no_turn, c_pitch, c_no_turn, teeth)
-            return qty
+            return self._get_cflight_qty(
+                type, flight_length_num,
+                l_pitch, l_no_turn,
+                c_pitch, c_no_turn, teeth,
+            )
         return 0
 
-    def _get_cflight_qty(self, type, flight_length_num, lead_pitch, l_no_turn, carrier_pitch, c_no_turn, teeth):
+    def _get_cflight_qty(
+        self, type, flight_length_num,
+        lead_pitch, l_no_turn, carrier_pitch, c_no_turn,
+        teeth
+    ):
+        """Calculate carrier flight quantity."""
         type_lower = type.strip().lower()
-        auger_types = ('dual rock', 'taper rock', 'zed 25mm', 'zed 32mm', 'zed 40mm', 'zed 50mm')
-        ar150_teeth = ('ar150 teeth', 'ar150 teeth w/ gauge teeth', 'blade teeth', 'blade teeth w/ gauge teeth')
-
+        auger_types = (
+            'dual rock', 'taper rock',
+            'zed 25mm', 'zed 32mm', 'zed 40mm', 'zed 50mm',
+        )
+        ar150_teeth = (
+            'ar150 teeth', 'ar150 teeth w/ gauge teeth',
+            'blade teeth', 'blade teeth w/ gauge teeth',
+        )
         denominator = carrier_pitch * c_no_turn
         if denominator == 0:
-            _logger.warning(f"Division by zero prevented for type={type}. carrier_pitch={carrier_pitch}, c_no_turn={c_no_turn}")
+            _logger.warning(
+                "Division by zero prevented for type=%s. "
+                "carrier_pitch=%s, c_no_turn=%s",
+                type, carrier_pitch, c_no_turn,
+            )
             return 0
 
+        lead_offset = lead_pitch * l_no_turn
         try:
             if type_lower in auger_types:
-                qty = (flight_length_num - (lead_pitch * l_no_turn)) / denominator
+                qty = (flight_length_num - lead_offset) / denominator
             elif type_lower in ('clay/shale', 'blade'):
+                qty = (flight_length_num - lead_offset) / denominator
                 if teeth.strip().lower() in ar150_teeth:
-                    qty = (flight_length_num - (lead_pitch * l_no_turn)) / denominator * 2
-                else:
-                    qty = (flight_length_num - (lead_pitch * l_no_turn)) / denominator
+                    qty *= 2
             elif type_lower == 'triad rock':
-                qty = (flight_length_num - (lead_pitch * l_no_turn * 0.4)) / denominator
+                qty = (flight_length_num - (lead_offset * 0.4)) / denominator
             else:
                 return 0
 
             return math.ceil(qty * 2) / 2
 
         except Exception as e:
-            _logger.exception(f"Unexpected error in _get_cflight_qty for type={type}: {e}")
+            _logger.exception(
+                "Unexpected error in _get_cflight_qty "
+                "for type=%s: %s", type, e,
+            )
             return 0
 
     def _parse_flight_spec(self, name):
-        """Parse flight product name into its component values.
-        
+        """Parse flight product name into component values.
+
         Example: 'Flight - OD1370 ID276 P900 T30 LH R1.2'
-        Returns dict with od, id, pitch, thickness, rotation, no_turns or None if unparseable.
+        Returns dict with od, id, pitch, thickness,
+        rotation, no_turns or None if unparseable.
         """
         od = re.search(r'OD(\d+)', name)
         id_ = re.search(r'ID(\d+)', name)
@@ -865,19 +912,23 @@ class ProductProduct(models.Model):
             'no_turns': f"R{turns_val}" if turns_val > 1 else "",
         }
 
-    def _find_flight_product(self, base_id, od, pitch, thickness, rotation, no_turns):
-        """Find the best matching flight product for a centre tube.
-    
-        Matches on OD, pitch, thickness, rotation, and turns.
-        The flight's ID must fall within tolerance of the centre tube OD: base_id <= ID <= base_id + 5.
-        Returns the product with the smallest qualifying ID.
+    def _find_flight_product(
+        self, base_id, od, pitch, thickness,
+        rotation, no_turns
+    ):
+        """Find best matching flight product for a centre tube.
+
+        ID tolerance: base_id <= ID <= base_id + 5.
+        Returns (product, id_value) with smallest qualifying ID.
         """
         Product = self.env['product.product']
-        flights = Product.search([('name', 'ilike', 'Flight -')])
-    
+        flights = Product.search([
+            ('name', 'ilike', 'Flight -')
+        ])
+
         best_product = None
         best_id_value = None
-    
+
         for product in flights:
             spec = self._parse_flight_spec(product.name)
             if spec is None:
@@ -902,10 +953,12 @@ class ProductProduct(models.Model):
 
         return best_product, best_id_value
 
-    def _get_flight_combination(self, flight_pt, flight_od, center_tube, rotation):
-        """Determine the best flight product for a given centre tube and return its name."""
+    def _get_flight_combination(
+        self, flight_pt, flight_od, center_tube, rotation
+    ):
+        """Find the best flight product for a centre tube."""
         def _parse_flight_params(flight_pt):
-            """Extract pitch, thickness, and formatted turns string from a flight spec string."""
+            """Extract pitch, thickness, and turns."""
             p_match = re.search(r'P(\d+)', flight_pt)
             t_match = re.search(r'T(\d+)', flight_pt)
             r_match = re.search(r'R(\d+(?:\.\d+)?)', flight_pt)
@@ -914,11 +967,10 @@ class ProductProduct(models.Model):
             thickness = int(t_match.group(1)) if t_match else 0
             turns_val = float(r_match.group(1)) if r_match else 0
             turns_str = f"R{turns_val}" if turns_val > 1 else ""
-    
             return pitch, thickness, turns_str
 
         def _extract_od(text):
-            """Extract OD integer from a string like 'OD1370' or 'OD273mm'."""
+            """Extract OD integer from text."""
             match = re.search(r'OD(\d+)', text)
             return int(match.group(1)) if match else 0
 
@@ -929,7 +981,7 @@ class ProductProduct(models.Model):
         flight_od_value = _extract_od(flight_od)
         pitch, thickness, turns_str = _parse_flight_params(flight_pt)
         f_rotation = "RH" if rotation == 'Right Hand Rotation' else "LH"
-    
+
         best_product, _ = self._find_flight_product(
             base_id=base_id,
             od=flight_od_value,
@@ -941,10 +993,12 @@ class ProductProduct(models.Model):
 
         return best_product.name if best_product else ""
 
-    def _get_lead_or_carrier_flight(self, type, diameter, center_tube, l_pt, l_od, c_pt, c_od, rotation, flighted_length, override_bom, teeth):
-        """
-        Returns a list of tuples (flight_string, quantity) for lead and carrier flights.
-        """
+    def _get_lead_or_carrier_flight(
+        self, type, diameter, center_tube,
+        l_pt, l_od, c_pt, c_od,
+        rotation, flighted_length, override_bom, teeth
+    ):
+        """Return lead and carrier flight tuples."""
         lead_flight = self._get_flight_combination(l_pt, l_od, center_tube, rotation)
         carrier_flight = self._get_flight_combination(c_pt, c_od, center_tube, rotation)
 
@@ -1064,21 +1118,21 @@ class ProductProduct(models.Model):
             '25mm BTK03 Teeth w/ Flat Back Holder': {
                 'divisor': 44,
                 'parts': [
-                    'BTK03TB - 25mm Shank Teeth',
+                    'BTK03TB - 25mm Shank Teeth. 12.7mm carbide.',
                     'TB25 - 25mm Flat Back Holder',
                 ]
             },
             '25mm BTK03 Teeth w/ Block Holder': {
                 'divisor': 44,
                 'parts': [
-                    'BTK03TB - 25mm Shank Teeth',
+                    'BTK03TB - 25mm Shank Teeth. 12.7mm carbide.',
                     'BHR31 - 25mm Block Tooth Holder',
                 ]
             },
-            '38/30 BKH105 Teeth': {
+            '38/30 BKH80 Teeth': {
                 'divisor': 66,
                 'parts': [
-                    'BKH105TB - 38/30mm Shank Teeth',
+                    'BKH80TB - Step shank 38/30mm teeth. 17.4mm Carbide - hardfaced',
                     'BHR38 - 38/30mm Block Tooth Holder',
                 ]
             },
@@ -1157,21 +1211,21 @@ class ProductProduct(models.Model):
             '25mm BTK03 Teeth w/ Flat Back Holder': {
                 'divisor': 44,
                 'parts': [
-                    'BTK03TB - 25mm Shank Teeth',
+                    'BTK03TB - 25mm Shank Teeth. 12.7mm carbide.',
                     'TB25 - 25mm Flat Back Holder',
                 ]
             },
             '25mm BTK03 Teeth w/ Block Holder': {
                 'divisor': 44,
                 'parts': [
-                    'BTK03TB - 25mm Shank Teeth',
+                    'BTK03TB - 25mm Shank Teeth. 12.7mm carbide.',
                     'BHR31 - 25mm Block Tooth Holder',
                 ]
             },
-            '38/30 BKH105 Teeth': {
+            '38/30 BKH80 Teeth': {
                 'divisor': 66,
                 'parts': [
-                    'BKH105TB - 38/30mm Shank Teeth',
+                    'BKH80TB - Step shank 38/30mm teeth. 17.4mm Carbide - hardfaced',
                     'BHR38 - 38/30mm Block Tooth Holder',
                 ]
             },
@@ -1317,14 +1371,14 @@ class ProductProduct(models.Model):
                     ('End Cap - Suit Hex Pilot Support', 1),
                 ],
                 'teeth_3': ('BC86TB - TEBCO 22mm Teeth', 4),
-             },
+            },
             '25mm Teeth Pilot': {
                 'parts': [
                     ('Rock Auger Pilot - 25mm Shank 75mm square', 1),
                     ('Pilot Support - 75mm Square', 1),
                     ('End Cap - Suit 75mm Square Pilot Support', 1),
                 ],
-                'teeth_3': ('BTK03TB - 25mm Shank Teeth', 4),
+                'teeth_3': ('BTK03TB - 25mm Shank Teeth. 12.7mm carbide.', 4),
             },
             '38/30 Teeth Pilot': {
                 'parts': [
@@ -1332,7 +1386,7 @@ class ProductProduct(models.Model):
                     ('Pilot Support - 100mm Square', 1),
                     ('End Cap - Suit 100mm Square Pilot Support', 1),
                 ],
-                'teeth_3': ('BKH105TB - 38/30mm Shank Teeth', 4),
+                'teeth_3': ('BKH80TB - Step shank 38/30mm teeth. 17.4mm Carbide - hardfaced', 4),
             },
             'Blade Auger Fishtail Pilot': {
                 'parts': [
@@ -1481,27 +1535,53 @@ class ProductProduct(models.Model):
                 return item[0]
         return None  # No keyword match found
 
-    def _get_bp_dual_taper_rock(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom):
-        d_number = re.findall(r'\d+', diameter)[0]
-        diameter = int(d_number)
+    def _get_bp_dual_taper_rock(
+        self, type, diameter, drive_head, overall_length,
+        flighted_length, rotation, teeth, pilot,
+        center_tube, lead_flight_od, lead_flight_pt,
+        carrier_od, carrier_pt, override_bom
+    ):
+        diameter = int(re.findall(r'\d+', diameter)[0])
 
-        d_head_75mm = "Drive Head - 75mm Square"
-        h_bar_od150 = "Hollow Bar - OD150mm ID120mm"
-        stiffening_ring = "Stiffening Ring - 75mm Head" if drive_head == d_head_75mm and center_tube == h_bar_od150 else ""
+        d_head_75 = "Drive Head - 75mm Square"
+        h_bar_150 = "Hollow Bar - OD150mm ID120mm"
+        stiffening_ring = (
+            "Stiffening Ring - 75mm Head"
+            if drive_head == d_head_75
+            and center_tube == h_bar_150
+            else ""
+        )
 
         base_plate = self._get_base_plate(drive_head)
-        fb_components = self._get_flight_brace_components(drive_head, carrier_lead_flight_od, carrier_lead_flight_pt)
-        flight_brace = self._get_range_per_diameter(fb_components, diameter) if fb_components else []
-        # raise ValidationError(f"flight_brace{flight_brace}")
-        tube_gusset = self._get_tube_guesset(drive_head, center_tube)
-        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length, override_bom, teeth)
+        fb_components = self._get_flight_brace_components(
+            drive_head, carrier_od, carrier_pt
+        )
+        flight_brace = (
+            self._get_range_per_diameter(fb_components, diameter)
+            if fb_components else []
+        )
+        tube_gusset = self._get_tube_guesset(
+            drive_head, center_tube
+        )
+        l_flight, c_flight = self._get_lead_or_carrier_flight(
+            type, diameter, center_tube,
+            lead_flight_pt, lead_flight_od,
+            carrier_pt, carrier_od,
+            rotation, flighted_length, override_bom, teeth,
+        )
 
-        fb_item, fb_qty = flight_brace if flight_brace else (None, 0)
-        stiffening = (stiffening_ring, 1) if stiffening_ring else (None, 0) 
-        teeth_dual_taper = self._get_teeth_dual_taper_rock(diameter, teeth, pilot, rotation) or []
+        fb_item, fb_qty = flight_brace or (None, 0)
+        stiffening = (
+            (stiffening_ring, 1) if stiffening_ring
+            else (None, 0)
+        )
+        teeth_parts = self._get_teeth_dual_taper_rock(
+            diameter, teeth, pilot, rotation
+        ) or []
 
-        pilot_support = self._get_pilot_support(teeth_dual_taper)
-        _center_tube = self._get_center_tube(overall_length, drive_head, center_tube, pilot)
+        _center_tube = self._get_center_tube(
+            overall_length, drive_head, center_tube, pilot
+        )
         _none = (None, 0)
 
         components = [
@@ -1514,21 +1594,34 @@ class ProductProduct(models.Model):
             l_flight,
             c_flight,
         ]
-        # raise ValidationError(f"test {teeth_dual_taper}")
-        components.extend(teeth_dual_taper)
-        # exclude none values
-        components = [c for c in components if c and len(c) >= 2 and c[0] and c[1]]
+        components.extend(teeth_parts)
+        components = [
+            c for c in components
+            if c and len(c) >= 2 and c[0] and c[1]
+        ]
         return components
 
-    def _get_bp_triad_rock(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom):
-        d_number = re.findall(r'\d+', diameter)[0]
-        diameter = int(d_number)
+    def _get_bp_triad_rock(
+        self, type, diameter, drive_head, overall_length,
+        flighted_length, rotation, teeth, pilot,
+        center_tube, lead_flight_od, lead_flight_pt,
+        carrier_od, carrier_pt, override_bom
+    ):
+        diameter = int(re.findall(r'\d+', diameter)[0])
 
-        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length, override_bom, teeth)
-        teeth_triad_rock = self._get_teeth_triad_rock(diameter, teeth, pilot, rotation) or []
+        l_flight, c_flight = self._get_lead_or_carrier_flight(
+            type, diameter, center_tube,
+            lead_flight_pt, lead_flight_od,
+            carrier_pt, carrier_od,
+            rotation, flighted_length, override_bom, teeth,
+        )
+        teeth_parts = self._get_teeth_triad_rock(
+            diameter, teeth, pilot, rotation
+        ) or []
 
-        pilot_support = self._get_pilot_support(teeth_triad_rock)
-        _center_tube = self._get_center_tube(overall_length, drive_head, center_tube, pilot)
+        _center_tube = self._get_center_tube(
+            overall_length, drive_head, center_tube, pilot
+        )
         _none = (None, 0)
 
         components = [
@@ -1537,71 +1630,123 @@ class ProductProduct(models.Model):
             l_flight,
             c_flight,
         ]
-        components.extend(teeth_triad_rock)
-        # exclude none values
-        components = [c for c in components if c and len(c) >= 2 and c[0] and c[1]]
+        components.extend(teeth_parts)
+        components = [
+            c for c in components
+            if c and len(c) >= 2 and c[0] and c[1]
+        ]
         return components
 
-    def _get_bp_zed(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom):
-        d_number = re.findall(r'\d+', diameter)[0]
-        diameter = int(d_number)
+    def _get_bp_zed(
+        self, type, diameter, drive_head, overall_length,
+        flighted_length, rotation, teeth, pilot,
+        center_tube, lead_flight_od, lead_flight_pt,
+        carrier_od, carrier_pt, override_bom
+    ):
+        diameter = int(re.findall(r'\d+', diameter)[0])
 
-        pilot_support = "None"
-        d_head_75mm = "Drive Head - 75mm Square"
-        h_bar_od150 = "Hollow Bar - OD150mm ID120mm"
-        stiffening_ring = "Stiffening Ring - 75mm Head" if drive_head == d_head_75mm and center_tube == h_bar_od150 else ""
+        d_head_75 = "Drive Head - 75mm Square"
+        h_bar_150 = "Hollow Bar - OD150mm ID120mm"
+        stiffening_ring = (
+            "Stiffening Ring - 75mm Head"
+            if drive_head == d_head_75
+            and center_tube == h_bar_150
+            else ""
+        )
 
         base_plate = self._get_base_plate(drive_head)
-        tube_gusset = self._get_tube_guesset(drive_head, center_tube)
-        fb_components = self._get_flight_brace_components(drive_head, carrier_lead_flight_od, carrier_lead_flight_pt)
-        flight_brace = self._get_range_per_diameter(fb_components, diameter) if fb_components else []
-        fb_item, fb_qty = flight_brace if flight_brace else (None, 0)
+        tube_gusset = self._get_tube_guesset(
+            drive_head, center_tube
+        )
+        fb_components = self._get_flight_brace_components(
+            drive_head, carrier_od, carrier_pt
+        )
+        flight_brace = (
+            self._get_range_per_diameter(fb_components, diameter)
+            if fb_components else []
+        )
+        fb_item, fb_qty = flight_brace or (None, 0)
 
-        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length, override_bom, teeth)
-        zed_centre = self._get_zed_center_component_map(center_tube)
-        _center_tube = self._get_center_tube_zed(overall_length, drive_head, center_tube, zed_centre)
-        teeth_zed = self._get_teeth_zed(diameter, center_tube, teeth) or []
+        l_flight, c_flight = self._get_lead_or_carrier_flight(
+            type, diameter, center_tube,
+            lead_flight_pt, lead_flight_od,
+            carrier_pt, carrier_od,
+            rotation, flighted_length, override_bom, teeth,
+        )
+        zed_centre = self._get_zed_center_component_map(
+            center_tube
+        )
+        _center_tube = self._get_center_tube_zed(
+            overall_length, drive_head, center_tube, zed_centre
+        )
+        teeth_zed = self._get_teeth_zed(
+            diameter, center_tube, teeth
+        ) or []
 
-        stiffening = (stiffening_ring, 1) if stiffening_ring else (None, 0)
-        teeth_brace = ('ZED Auger Teeth Brace', 2)
+        stiffening = (
+            (stiffening_ring, 1) if stiffening_ring
+            else (None, 0)
+        )
         _none = (None, 0)
 
         components = [
             (drive_head, 1),
-            stiffening, 
+            stiffening,
             base_plate,
             tube_gusset,
             (fb_item, fb_qty),
             _center_tube or _none,
             l_flight,
             c_flight,
-            teeth_brace,
-            (zed_centre, 1)
+            ('ZED Auger Teeth Brace', 2),
+            (zed_centre, 1),
         ]
         components.extend(teeth_zed)
-        # exclude none e.g (None, (None, 0), ('', 0))
-        components = [c for c in components if c and len(c) >= 2 and c[0] and c[1]]
-
+        components = [
+            c for c in components
+            if c and len(c) >= 2 and c[0] and c[1]
+        ]
         return components
 
-    def _get_bp_clay_shale(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom):
-        d_number = re.findall(r'\d+', diameter)[0]
-        diameter = int(d_number)
+    def _get_bp_clay_shale(
+        self, type, diameter, drive_head, overall_length,
+        flighted_length, rotation, teeth, pilot,
+        center_tube, lead_flight_od, lead_flight_pt,
+        carrier_od, carrier_pt, override_bom
+    ):
+        diameter = int(re.findall(r'\d+', diameter)[0])
 
-        d_head_75mm = "Drive Head - 75mm Square"
-        h_bar_od150 = "Hollow Bar - OD150mm ID120mm"
-        stiffening_ring = "Stiffening Ring - 75mm Head" if drive_head == d_head_75mm and center_tube == h_bar_od150 else ""
+        d_head_75 = "Drive Head - 75mm Square"
+        h_bar_150 = "Hollow Bar - OD150mm ID120mm"
+        stiffening_ring = (
+            "Stiffening Ring - 75mm Head"
+            if drive_head == d_head_75
+            and center_tube == h_bar_150
+            else ""
+        )
 
         base_plate = self._get_base_plate(drive_head)
-        tube_gusset = self._get_tube_guesset(drive_head, center_tube)
+        tube_gusset = self._get_tube_guesset(
+            drive_head, center_tube
+        )
 
-        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length, override_bom, teeth)
-        teeth_clay_shale = self._get_teeth_clay_shale(diameter, teeth, pilot, rotation) or []
+        l_flight, c_flight = self._get_lead_or_carrier_flight(
+            type, diameter, center_tube,
+            lead_flight_pt, lead_flight_od,
+            carrier_pt, carrier_od,
+            rotation, flighted_length, override_bom, teeth,
+        )
+        teeth_parts = self._get_teeth_clay_shale(
+            diameter, teeth, pilot, rotation
+        ) or []
 
-        pilot_support = self._get_pilot_support(teeth_clay_shale)
-        _center_tube = self._get_center_tube(overall_length, drive_head, center_tube, pilot)
-
-        stiffening = (stiffening_ring, 1) if stiffening_ring else (None, 0) 
+        _center_tube = self._get_center_tube(
+            overall_length, drive_head, center_tube, pilot
+        )
+        stiffening = (
+            (stiffening_ring, 1) if stiffening_ring
+            else (None, 0)
+        )
         _none = (None, 0)
 
         components = [
@@ -1611,35 +1756,49 @@ class ProductProduct(models.Model):
             tube_gusset,
             _center_tube or _none,
             l_flight,
-            c_flight
+            c_flight,
         ]
-        components.extend(teeth_clay_shale)
-        # exclude none values
-        components = [c for c in components if c and len(c) >= 2 and c[0] and c[1]]
-
+        components.extend(teeth_parts)
+        components = [
+            c for c in components
+            if c and len(c) >= 2 and c[0] and c[1]
+        ]
         return components
 
-    def _get_bp_blade(self, type, diameter, drive_head, overall_length, flighted_length, rotation, teeth, pilot, center_tube, lead_flight_od, lead_flight_pt, carrier_lead_flight_od, carrier_lead_flight_pt, override_bom):
-        d_number = re.findall(r'\d+', diameter)[0]
-        diameter = int(d_number)
+    def _get_bp_blade(
+        self, type, diameter, drive_head, overall_length,
+        flighted_length, rotation, teeth, pilot,
+        center_tube, lead_flight_od, lead_flight_pt,
+        carrier_od, carrier_pt, override_bom
+    ):
+        diameter = int(re.findall(r'\d+', diameter)[0])
 
-        l_flight, c_flight = self._get_lead_or_carrier_flight(type, diameter, center_tube, lead_flight_pt, lead_flight_od, carrier_lead_flight_pt, carrier_lead_flight_od, rotation, flighted_length, override_bom, teeth)
-        teeth_blade = self._get_teeth_blade(diameter, teeth, pilot)
+        l_flight, c_flight = self._get_lead_or_carrier_flight(
+            type, diameter, center_tube,
+            lead_flight_pt, lead_flight_od,
+            carrier_pt, carrier_od,
+            rotation, flighted_length, override_bom, teeth,
+        )
+        teeth_blade = self._get_teeth_blade(
+            diameter, teeth, pilot
+        )
 
-        pilot_support = self._get_pilot_support(teeth_blade)
-        _center_tube = self._get_center_tube(overall_length, drive_head, center_tube, pilot)
+        _center_tube = self._get_center_tube(
+            overall_length, drive_head, center_tube, pilot
+        )
         _none = (None, 0)
 
         components = [
             (drive_head, 1),
             _center_tube or _none,
             l_flight,
-            c_flight
+            c_flight,
         ]
         components.extend(teeth_blade)
-        # exclude none values
-        # raise ValidationError(f"This is blade... {_center_tube}")
-        components = [c for c in components if c and len(c) >= 2 and c[0] and c[1]]
+        components = [
+            c for c in components
+            if c and len(c) >= 2 and c[0] and c[1]
+        ]
         return components
 
     def _create_drilling_barrel(self, product):
@@ -3149,17 +3308,32 @@ class ProductProduct(models.Model):
             # Create new bom and set default values 
             self._create_bom_components(product, reference, components)
 
-    def _create_bom_components(self, product, reference, components):
+    def _create_bom_components(
+        self, product, reference, components
+    ):
         bom_lines = []
-        uom_meter = self.env.ref('uom.product_uom_meter', raise_if_not_found=False)
-        unit = self.env.ref('uom.product_uom_unit', raise_if_not_found=False)
-        keywords = {'Permanent Casing', 'Hollow Bar', 'Flat Bar', 'Pipe', 'Parallel Flange Channel', 'Bright Bar'}
+        uom_meter = self.env.ref(
+            'uom.product_uom_meter', raise_if_not_found=False
+        )
+        unit = self.env.ref(
+            'uom.product_uom_unit', raise_if_not_found=False
+        )
+        meter_keywords = {
+            'Permanent Casing', 'Hollow Bar', 'Flat Bar',
+            'Pipe', 'Parallel Flange Channel', 'Bright Bar',
+        }
 
         for component_name, qty in components:
             if not component_name or not qty:
                 continue
-            uom = uom_meter if any(keyword in component_name for keyword in keywords) else unit
-            component = self.env['product.product'].search([('name', '=ilike', component_name)], limit=1)
+            uom = (
+                uom_meter
+                if any(kw in component_name for kw in meter_keywords)
+                else unit
+            )
+            component = self.env['product.product'].search(
+                [('name', '=ilike', component_name)], limit=1
+            )
             if not component:
                 component = self.env['product.product'].create({
                     'name': component_name,
