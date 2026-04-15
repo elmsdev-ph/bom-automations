@@ -82,6 +82,8 @@ class ProductProduct(models.Model):
     def create(self, vals_list):
         products = super().create(vals_list)
         for product in products:
+            if self.env['mrp.bom'].search_count([('product_id', '=', product.id)]):
+                continue
             self._create_bom_for_variant(product)
             self._create_tre_pipe(product)
             self._create_cleaning_bucket(product)
@@ -970,9 +972,21 @@ class ProductProduct(models.Model):
             return pitch, thickness, turns_str
 
         def _extract_od(text):
-            """Extract OD integer from text."""
+            """Extract OD integer from text.
+
+            Centre tubes are usually named like "Centre Tube - OD168 ID146 ..."
+            but Bright Bar / Black Bar variants are named like
+            "4140 Bright Bar - 50mm" (no OD prefix). Fall back to the
+            trailing "<digits>mm" size in that case so flight matching
+            against the bar's diameter still works.
+            """
             match = re.search(r'OD(\d+)', text)
-            return int(match.group(1)) if match else 0
+            if match:
+                return int(match.group(1))
+            match = re.search(r'(\d+)\s*mm\b', text, re.IGNORECASE)
+            if match:
+                return int(match.group(1))
+            return 0
 
         if not flight_pt and not flight_od:
             return ""
