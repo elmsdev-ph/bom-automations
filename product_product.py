@@ -1,7 +1,7 @@
 from odoo import api, fields, models
 import csv
 import re
-from odoo.modules.module import get_module_resource
+from odoo.tools import file_path
 from odoo.exceptions import ValidationError
 import logging
 import math
@@ -25,21 +25,19 @@ class ProductProduct(models.Model):
     @api.depends_context('uom')
     def _compute_product_lst_price(self):
         to_uom = None
-        if 'uom' in self._context:
-            to_uom = self.env['uom.uom'].browse(self._context['uom'])
+        if 'uom' in self.env.context:
+            to_uom = self.env['uom.uom'].browse(self.env.context['uom'])
         for product in self:
             list_price = product.list_price if not product.is_different_price else product.different_price
             if to_uom:
                 list_price = product.uom_id._compute_price(list_price, to_uom)
-            else:
-                list_price = list_price
             product.lst_price = list_price + product.price_extra
 
     @api.onchange('lst_price', 'different_price', 'is_different_price')
     def _set_product_lst_price(self):
         for product in self:
-            if self._context.get('uom'):
-                value = self.env['uom.uom'].browse(self._context['uom'])._compute_price(product.lst_price, product.uom_id)
+            if self.env.context.get('uom'):
+                value = self.env['uom.uom'].browse(self.env.context['uom'])._compute_price(product.lst_price, product.uom_id)
             else:
                 value = product.lst_price
             value -= product.price_extra
@@ -61,8 +59,8 @@ class ProductProduct(models.Model):
                 price_currency = product.cost_currency_id
             if price_type == 'list_price':
                 price += product.price_extra
-                if self._context.get('no_variant_attributes_price_extra'):
-                    price += sum(self._context.get('no_variant_attributes_price_extra'))
+                if self.env.context.get('no_variant_attributes_price_extra'):
+                    price += sum(self.env.context.get('no_variant_attributes_price_extra'))
             if uom:
                 price = product.uom_id._compute_price(price, uom)
             if currency:
@@ -76,7 +74,7 @@ class ProductProduct(models.Model):
             boms = self.env['mrp.bom'].search([('product_id', '=', product.id)])
             if boms:
                 boms.unlink()
-        return super(ProductProduct, self).unlink()
+        return super().unlink()
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -437,6 +435,37 @@ class ProductProduct(models.Model):
         if components:
             self._create_bom_components(product, reference, components)
 
+    def _parse_bp_flight_attr(self, attr_value):
+        """Parse bored pile flight attribute into a product name.
+
+        Attribute values are like:
+          "Lead Flight - OD590 ID273 P400 T20 RH"
+          "Carrier Flight - OD100 ID51 P100 T8 RH (1m Long)"
+          "N/A"
+
+        Returns the product name like "Flight - OD590 ID273 P400 T20 RH"
+        or empty string if N/A/empty.
+        """
+        if not attr_value or attr_value.strip().lower() == 'n/a':
+            return ''
+        # Strip "Lead Flight - " or "Carrier Flight - " prefix → "Flight - ..."
+        cleaned = re.sub(
+            r'^(?:Lead|Carrier)\s+Flight\s*-\s*',
+            'Flight - ',
+            attr_value.strip(),
+        )
+        # Try finding product with full name first (including suffix like "(1m Long)")
+        product = self.env['product.product'].search(
+            [('name', '=ilike', cleaned.strip())], limit=1
+        )
+        if not product:
+            # Fallback: try without trailing parenthetical
+            stripped = re.sub(r'\s*\(.*?\)\s*$', '', cleaned).strip()
+            product = self.env['product.product'].search(
+                [('name', '=ilike', stripped)], limit=1
+            )
+        return product.name if product else ''
+
     def _get_bored_pile_component(self, product):
         """
         param: product.template to get the product attributes
@@ -455,22 +484,27 @@ class ProductProduct(models.Model):
         teeth = attributes.get('Teeth', '')
         pilot = attributes.get('Pilot', '')
         center_tube = attributes.get('Centre Tube', '')
-        lead_flight_od = attributes.get('Lead Flight OD', '')
-        lead_flight_pt = attributes.get('Lead Flight Pitch', '')
-        carrier_od = attributes.get('Carrier Flight OD', '')
-        carrier_pt = attributes.get('Carrier Flight Pitch', '')
-        override_bom = attributes.get('Override BOM', '')
+        lead_flight_attr = attributes.get('Lead Flight', '')
+        carrier_flight_attr = attributes.get('Carrier Flight', '')
+
+        # Validate required attributes
+        if pilot and pilot.strip().lower().startswith('please select'):
+            raise ValidationError("Opss! Please select a Pilot.")
+
+        # Parse flight attributes into product names
+        # "Lead Flight - OD590 ID273 P400 T20 RH" → "Flight - OD590 ID273 P400 T20 RH"
+        lead_flight = self._parse_bp_flight_attr(lead_flight_attr)
+        carrier_flight = self._parse_bp_flight_attr(carrier_flight_attr)
 
         args = (
             auger_type, diameter, drive_head,
             overall_length, flighted_length, rotation,
             teeth, pilot, center_tube,
-            lead_flight_od, lead_flight_pt,
-            carrier_od, carrier_pt, override_bom,
+            lead_flight, carrier_flight,
         )
         type_lower = auger_type.strip().lower()
 
-        if type_lower in ('taper rock', 'dual rock'):
+        if type_lower in ('taper rock', 'dual rock', 'taper rock aggressive'):
             return self._get_bp_dual_taper_rock(*args)
         elif type_lower == 'triad rock':
             return self._get_bp_triad_rock(*args)
@@ -689,6 +723,8 @@ class ProductProduct(models.Model):
             'hollow bar - OD273mm WT14': "ZED Centre 273mm",
             'Hollow Bar - OD273mm WT 25mm': "ZED Centre 273mm",
             'Hollow Bar - OD273mm WT 32mm': "ZED Centre 273mm",
+            'pipe - OD168mm WT4.8mm': "ZED Centre 168mm",
+            'Pipe - OD168mm WT6.4mm': "ZED Centre 168mm",
             'Pipe - OD168mm WT11mm': "ZED Centre 168mm",
             'Pipe - OD219mm WT12.7mm': "ZED Centre 219mm",
             'Pipe - OD273mm WT12.7mm': "ZED Centre 273mm"
@@ -729,7 +765,10 @@ class ProductProduct(models.Model):
         }
         offset = zed_offsets.get(zed_center)
         if offset is None:
-            return (center_tube, 0)
+            qty = round(
+                (o_length - dh_height - dh_base) / 1000, 2
+            )
+            return (center_tube, qty)
         qty = round(
             (o_length - dh_height - dh_base - offset) / 1000, 2
         )
@@ -782,7 +821,7 @@ class ProductProduct(models.Model):
         return (center_tube, qty)
 
     def _get_flight_brace_components(
-        self, dhead, carrier_od, carrier_pt
+        self, dhead, carrier_flight, carrier_flight_2=None
     ):
         """Return flight brace components by diameter range."""
         exclude_dhead = {
@@ -799,7 +838,7 @@ class ProductProduct(models.Model):
         if dhead in exclude_dhead:
             return []
 
-        fb_qty = 1 if carrier_od and carrier_pt else 2
+        fb_qty = 1 if carrier_flight else 2
         return {
             (0, 750): (None, 0),
             (750, 900): ("750mm flight brace 180mm long", fb_qty),
@@ -1007,6 +1046,42 @@ class ProductProduct(models.Model):
 
         return best_product.name if best_product else ""
 
+    def _get_bp_flight_components(
+        self, type, diameter, lead_flight, carrier_flight,
+        flighted_length, teeth,
+    ):
+        """Return lead and carrier flight tuples with quantities.
+
+        Flight names come pre-resolved from _parse_bp_flight_attr.
+        No override BOM logic needed — flights are already validated
+        against existing products during attribute parsing.
+        """
+        carrier_qty = self._get_carrier_flight_qty(
+            type, lead_flight or "", carrier_flight or "",
+            flighted_length, teeth,
+        )
+
+        type_lower = type.strip().lower()
+        if type_lower == "triad rock":
+            lead_qty = 3 if diameter > 650 else 1
+        else:
+            lead_qty = 2
+
+        # Combine flights with the same product name into one BOM line
+        flight_qtys = {}
+        for name, qty in [
+            (lead_flight, lead_qty),
+            (carrier_flight, carrier_qty),
+        ]:
+            if name and qty:
+                flight_qtys[name] = flight_qtys.get(name, 0) + qty
+
+        result = [(name, qty) for name, qty in flight_qtys.items()]
+        # Pad to 2 elements for l_flight, c_flight = unpacking
+        while len(result) < 2:
+            result.append((None, 0))
+        return result
+
     def _get_lead_or_carrier_flight(
         self, type, diameter, center_tube,
         l_pt, l_od, c_pt, c_od,
@@ -1129,18 +1204,11 @@ class ProductProduct(models.Model):
                     'BHR176 - 22mm Block Tooth Holder',
                 ]
             },
-            '25mm BTK03 Teeth w/ Flat Back Holder': {
+            '25mm BTK03 Teeth': {
                 'divisor': 44,
                 'parts': [
                     'BTK03TB - 25mm Shank Teeth. 12.7mm carbide.',
                     'TB25 - 25mm Flat Back Holder',
-                ]
-            },
-            '25mm BTK03 Teeth w/ Block Holder': {
-                'divisor': 44,
-                'parts': [
-                    'BTK03TB - 25mm Shank Teeth. 12.7mm carbide.',
-                    'BHR31 - 25mm Block Tooth Holder',
                 ]
             },
             '38/30 BKH80 Teeth': {
@@ -1222,18 +1290,11 @@ class ProductProduct(models.Model):
                     'BHR176 - 22mm Block Tooth Holder',
                 ]
             },
-            '25mm BTK03 Teeth w/ Flat Back Holder': {
+            '25mm BTK03 Teeth': {
                 'divisor': 44,
                 'parts': [
                     'BTK03TB - 25mm Shank Teeth. 12.7mm carbide.',
                     'TB25 - 25mm Flat Back Holder',
-                ]
-            },
-            '25mm BTK03 Teeth w/ Block Holder': {
-                'divisor': 44,
-                'parts': [
-                    'BTK03TB - 25mm Shank Teeth. 12.7mm carbide.',
-                    'BHR31 - 25mm Block Tooth Holder',
                 ]
             },
             '38/30 BKH80 Teeth': {
@@ -1552,8 +1613,7 @@ class ProductProduct(models.Model):
     def _get_bp_dual_taper_rock(
         self, type, diameter, drive_head, overall_length,
         flighted_length, rotation, teeth, pilot,
-        center_tube, lead_flight_od, lead_flight_pt,
-        carrier_od, carrier_pt, override_bom
+        center_tube, lead_flight, carrier_flight,
     ):
         diameter = int(re.findall(r'\d+', diameter)[0])
 
@@ -1568,7 +1628,7 @@ class ProductProduct(models.Model):
 
         base_plate = self._get_base_plate(drive_head)
         fb_components = self._get_flight_brace_components(
-            drive_head, carrier_od, carrier_pt
+            drive_head, carrier_flight
         )
         flight_brace = (
             self._get_range_per_diameter(fb_components, diameter)
@@ -1577,11 +1637,9 @@ class ProductProduct(models.Model):
         tube_gusset = self._get_tube_guesset(
             drive_head, center_tube
         )
-        l_flight, c_flight = self._get_lead_or_carrier_flight(
-            type, diameter, center_tube,
-            lead_flight_pt, lead_flight_od,
-            carrier_pt, carrier_od,
-            rotation, flighted_length, override_bom, teeth,
+        l_flight, c_flight = self._get_bp_flight_components(
+            type, diameter, lead_flight, carrier_flight,
+            flighted_length, teeth,
         )
 
         fb_item, fb_qty = flight_brace or (None, 0)
@@ -1618,16 +1676,13 @@ class ProductProduct(models.Model):
     def _get_bp_triad_rock(
         self, type, diameter, drive_head, overall_length,
         flighted_length, rotation, teeth, pilot,
-        center_tube, lead_flight_od, lead_flight_pt,
-        carrier_od, carrier_pt, override_bom
+        center_tube, lead_flight, carrier_flight,
     ):
         diameter = int(re.findall(r'\d+', diameter)[0])
 
-        l_flight, c_flight = self._get_lead_or_carrier_flight(
-            type, diameter, center_tube,
-            lead_flight_pt, lead_flight_od,
-            carrier_pt, carrier_od,
-            rotation, flighted_length, override_bom, teeth,
+        l_flight, c_flight = self._get_bp_flight_components(
+            type, diameter, lead_flight, carrier_flight,
+            flighted_length, teeth,
         )
         teeth_parts = self._get_teeth_triad_rock(
             diameter, teeth, pilot, rotation
@@ -1654,8 +1709,7 @@ class ProductProduct(models.Model):
     def _get_bp_zed(
         self, type, diameter, drive_head, overall_length,
         flighted_length, rotation, teeth, pilot,
-        center_tube, lead_flight_od, lead_flight_pt,
-        carrier_od, carrier_pt, override_bom
+        center_tube, lead_flight, carrier_flight,
     ):
         diameter = int(re.findall(r'\d+', diameter)[0])
 
@@ -1673,7 +1727,7 @@ class ProductProduct(models.Model):
             drive_head, center_tube
         )
         fb_components = self._get_flight_brace_components(
-            drive_head, carrier_od, carrier_pt
+            drive_head, carrier_flight
         )
         flight_brace = (
             self._get_range_per_diameter(fb_components, diameter)
@@ -1681,11 +1735,9 @@ class ProductProduct(models.Model):
         )
         fb_item, fb_qty = flight_brace or (None, 0)
 
-        l_flight, c_flight = self._get_lead_or_carrier_flight(
-            type, diameter, center_tube,
-            lead_flight_pt, lead_flight_od,
-            carrier_pt, carrier_od,
-            rotation, flighted_length, override_bom, teeth,
+        l_flight, c_flight = self._get_bp_flight_components(
+            type, diameter, lead_flight, carrier_flight,
+            flighted_length, teeth,
         )
         zed_centre = self._get_zed_center_component_map(
             center_tube
@@ -1725,8 +1777,7 @@ class ProductProduct(models.Model):
     def _get_bp_clay_shale(
         self, type, diameter, drive_head, overall_length,
         flighted_length, rotation, teeth, pilot,
-        center_tube, lead_flight_od, lead_flight_pt,
-        carrier_od, carrier_pt, override_bom
+        center_tube, lead_flight, carrier_flight,
     ):
         diameter = int(re.findall(r'\d+', diameter)[0])
 
@@ -1744,11 +1795,9 @@ class ProductProduct(models.Model):
             drive_head, center_tube
         )
 
-        l_flight, c_flight = self._get_lead_or_carrier_flight(
-            type, diameter, center_tube,
-            lead_flight_pt, lead_flight_od,
-            carrier_pt, carrier_od,
-            rotation, flighted_length, override_bom, teeth,
+        l_flight, c_flight = self._get_bp_flight_components(
+            type, diameter, lead_flight, carrier_flight,
+            flighted_length, teeth,
         )
         teeth_parts = self._get_teeth_clay_shale(
             diameter, teeth, pilot, rotation
@@ -1782,16 +1831,13 @@ class ProductProduct(models.Model):
     def _get_bp_blade(
         self, type, diameter, drive_head, overall_length,
         flighted_length, rotation, teeth, pilot,
-        center_tube, lead_flight_od, lead_flight_pt,
-        carrier_od, carrier_pt, override_bom
+        center_tube, lead_flight, carrier_flight,
     ):
         diameter = int(re.findall(r'\d+', diameter)[0])
 
-        l_flight, c_flight = self._get_lead_or_carrier_flight(
-            type, diameter, center_tube,
-            lead_flight_pt, lead_flight_od,
-            carrier_pt, carrier_od,
-            rotation, flighted_length, override_bom, teeth,
+        l_flight, c_flight = self._get_bp_flight_components(
+            type, diameter, lead_flight, carrier_flight,
+            flighted_length, teeth,
         )
         teeth_blade = self._get_teeth_blade(
             diameter, teeth, pilot
@@ -3176,9 +3222,6 @@ class ProductProduct(models.Model):
             qty += l - 0.19
         elif d == 10 or d == 12:
             qty += l - 0.20
-        else:
-            qty
-            
         return qty
 
     def _create_bom_for_variant(self, product):
@@ -3612,7 +3655,7 @@ class ProductProduct(models.Model):
         return None
     
     def _load_teeth_data(self, filename):
-        filepath = get_module_resource('general_ledger', 'data', filename)
+        filepath = file_path(f'general_ledger/data/{filename}')
         data = {}
         with open(filepath, mode='r') as file:
             csv_reader = csv.DictReader(file)
