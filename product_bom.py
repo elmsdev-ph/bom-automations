@@ -50,45 +50,48 @@ class ProductProduct(models.Model):
         pilot = attributes.get('Pilot', '')
         centre_tube = attributes.get('Centre Tube', '')
         inner_tube = attributes.get('Inner Tube', '')
-        l_flight_od = attributes.get('Lead Flight OD', '')
-        l_flight_pt = attributes.get('Lead Flight Pitch', '')
-        c_flight_od = attributes.get('Carrier Flight OD', '')
-        c_flight_pt = attributes.get('Carrier Flight Pitch', '')
-        coupling_flight_id = attributes.get('Coupling Flight ID', '')
-        override_bom = attributes.get('Override BOM', '')
+        lead_flight = self._parse_bp_flight_attr(attributes.get('Lead Flight', ''))
+        carrier_flight = self._parse_bp_flight_attr(attributes.get('Carrier Flight', ''))
+        coupling_flight = self._parse_bp_flight_attr(attributes.get('Coupling Flight', ''))
 
         diameter_match = re.search(r"\d+\.?\d*", diameter) if diameter else None
         diameter = int(diameter_match.group()) if diameter_match else 0
 
-        # Validate required attributes
-        if not pilot or pilot.strip().lower().startswith('please select'):
+        # Validate pilot — only raise if explicitly set to "Please select..."
+        # N/A and empty are acceptable (N/A gets excluded as empty by attributes)
+        if pilot and pilot.strip().lower().startswith('please select'):
             raise ValidationError("Opss! Please select a Pilot.")
+
+        args = (
+            cfa_type, lead_type, diameter, drive_head, o_length,
+            rotation, teeth, pilot, centre_tube, inner_tube,
+            lead_flight, carrier_flight, coupling_flight,
+        )
 
         if cfa_type == 'Lead':
             if lead_type in ['Taper Rock', 'Dual Rock', 'Clay/Shale']:
-                components = self._get_cfa_dual_taper_rock(cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id, override_bom)
+                components = self._get_cfa_dual_taper_rock(*args)
             elif lead_type in ['ZED 25mm', 'ZED 32mm', 'ZED 40mm', 'ZED 50mm']:
-                components = self._get_cfa_zed(cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id, override_bom)
+                components = self._get_cfa_zed(*args)
             elif lead_type == 'Single Cut':
-                components = self._get_cfa_single_cut(cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id, override_bom)
+                components = self._get_cfa_single_cut(*args)
             else:
                 return []
         elif cfa_type == 'Intermediate':
-            components = self._get_cfa_intermediate(cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id, override_bom)
+            components = self._get_cfa_intermediate(*args)
         else:
-            # Extension (for couplings only)
-            components = self._get_cfa_extension(cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id)
+            components = self._get_cfa_extension(*args)
         return components
 
-    def _get_cfa_dual_taper_rock(self, cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id, override_bom):
+    def _get_cfa_dual_taper_rock(self, cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, lead_flight, carrier_flight, coupling_flight):
         # Get all items for at3
-        ctube_at3 = self._get_cfa_coupling_ctube_at3(centre_tube, inner_tube)
+        ctube_at3 = self._get_cfa_coupling_ctube_at3(centre_tube, inner_tube, drive_head, cfa_type)
         # Get the elbow item for mapping of inner tube height
         elbow = ctube_at3[0][0] if ctube_at3 else ''
         zed_center = "" # leave empty; only applicable for zed type
         base_coupling_at2 = self._get_cfa_coupling_dhead_at2(cfa_type, lead_type, drive_head, centre_tube, inner_tube, pilot, zed_center, elbow, o_length)
         # Return: Items for lead, carrier, and coupling flights w/ qty
-        cfa_stock_flights_at4 = self._get_cfa_lead_ca_co_flights(cfa_type, lead_type, diameter, centre_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id, rotation, o_length, drive_head, override_bom)
+        cfa_stock_flights_at4 = self._get_cfa_lead_ca_co_flights(cfa_type, lead_type, lead_flight, carrier_flight, coupling_flight, o_length, drive_head)
         # Get all the teeth and pilot items
         teeth_and_pilot_at5 = self._get_cfa_coupling_teeth_at5(diameter, centre_tube, lead_type, teeth, pilot)
         # Get tube gusset
@@ -108,14 +111,14 @@ class ProductProduct(models.Model):
 
         return components
 
-    def _get_cfa_intermediate(self, cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id, override_bom):
+    def _get_cfa_intermediate(self, cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, lead_flight, carrier_flight, coupling_flight):
         # Get all items for at3
-        ctube_at3 = self._get_cfa_coupling_ctube_at3(centre_tube, inner_tube)
+        ctube_at3 = self._get_cfa_coupling_ctube_at3(centre_tube, inner_tube, drive_head, cfa_type)
         elbow = ctube_at3[0][0] if ctube_at3 else ''  # Get the elbow item for mapping of inner tube height
         zed_center = "" # leave empty; only applicable for zed type
         base_coupling_at2 = self._get_cfa_coupling_dhead_at2(cfa_type, lead_type, drive_head, centre_tube, inner_tube, pilot, zed_center, elbow, o_length)
         # Return: Items for lead, carrier, and coupling flights w/ qty
-        cfa_stock_flights_at4 = self._get_cfa_lead_ca_co_flights(cfa_type, lead_type, diameter, centre_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id, rotation, o_length, drive_head, override_bom)
+        cfa_stock_flights_at4 = self._get_cfa_lead_ca_co_flights(cfa_type, lead_type, lead_flight, carrier_flight, coupling_flight, o_length, drive_head)
         s_ring = ctube_at3[3] if len(ctube_at3) >= 4 else (None, 0)
         s_ring_lst = [s_ring]
         # We combine all components based on lead type
@@ -130,9 +133,9 @@ class ProductProduct(models.Model):
 
         return components
 
-    def _get_cfa_extension(self, cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id):
+    def _get_cfa_extension(self, cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, lead_flight, carrier_flight, coupling_flight):
         # Get all items for at3
-        ctube_at3 = self._get_cfa_coupling_ctube_at3(centre_tube, inner_tube)
+        ctube_at3 = self._get_cfa_coupling_ctube_at3(centre_tube, inner_tube, drive_head, cfa_type)
         elbow = ctube_at3[0][0] if ctube_at3 else ''# Get the elbow item for mapping of inner tube height
         zed_center = "" # leave empty; only applicable for zed type
         base_coupling_at2 = self._get_cfa_coupling_dhead_at2(cfa_type, lead_type, drive_head, centre_tube, inner_tube, pilot, zed_center, elbow, o_length)
@@ -150,24 +153,26 @@ class ProductProduct(models.Model):
 
         return components
 
-    def _get_cfa_zed(self, cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id, override_bom):
+    def _get_cfa_zed(self, cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, lead_flight, carrier_flight, coupling_flight):
         # Get all items for at3
-        ctube_at3 = self._get_cfa_coupling_ctube_at3(centre_tube, inner_tube)
+        ctube_at3 = self._get_cfa_coupling_ctube_at3(centre_tube, inner_tube, drive_head, cfa_type)
         elbow = ctube_at3[0][0] if ctube_at3 else ''  # Get the elbow item for mapping of inner tube height
         # Zed center items
         zed_center_at6 = self._get_cfa_zed_center_at6(centre_tube, diameter)
         zed_center = zed_center_at6[0][0] if zed_center_at6 else ''
         base_coupling_at2 = self._get_cfa_coupling_dhead_at2(cfa_type, lead_type, drive_head, centre_tube, inner_tube, pilot, zed_center, elbow, o_length)
         # Return: Items for lead, carrier, and coupling flights w/ qty
-        cfa_stock_flights_at4 = self._get_cfa_lead_ca_co_flights(cfa_type, lead_type, diameter, centre_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id, rotation, o_length, drive_head, override_bom)
+        cfa_stock_flights_at4 = self._get_cfa_lead_ca_co_flights(cfa_type, lead_type, lead_flight, carrier_flight, coupling_flight, o_length, drive_head)
         # Get all the teeth and pilot items
         teeth_and_pilot_at5 = self._get_cfa_coupling_teeth_at5(diameter, centre_tube, lead_type, teeth, pilot)
         # We combine all components based on lead type
         cfa_tube_gusset_at7 = self._get_cfa_tube_gusset_at7(centre_tube, drive_head)
+        teeth_brace = [("ZED Auger Teeth Brace", 2)]
         combination = [
             *base_coupling_at2,
             *cfa_stock_flights_at4,
             *teeth_and_pilot_at5,
+            *teeth_brace,
             *ctube_at3,
             *zed_center_at6,
             cfa_tube_gusset_at7,
@@ -177,22 +182,21 @@ class ProductProduct(models.Model):
 
         return components
 
-    def _get_cfa_single_cut(self, cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id, override_bom):
+    def _get_cfa_single_cut(self, cfa_type, lead_type, diameter, drive_head, o_length, rotation, teeth, pilot, centre_tube, inner_tube, lead_flight, carrier_flight, coupling_flight):
         # Get all items for at3
-        ctube_at3 = self._get_cfa_coupling_ctube_at3(centre_tube, inner_tube)
+        ctube_at3 = self._get_cfa_coupling_ctube_at3(centre_tube, inner_tube, drive_head, cfa_type)
         elbow = ctube_at3[0][0] if ctube_at3 else ''  # Get the elbow item for mapping of inner tube height
         zed_center = "" # leave empty; only applicable for zed type
         base_coupling_at2 = self._get_cfa_coupling_dhead_at2(cfa_type, lead_type, drive_head, centre_tube, inner_tube, pilot, zed_center, elbow, o_length)
         # Return: Items for lead, carrier, and coupling flights w/ qty
-        cfa_stock_flights_at4 = self._get_cfa_lead_ca_co_flights(cfa_type, lead_type, diameter, centre_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, coupling_flight_id, rotation, o_length, drive_head, override_bom)
+        cfa_stock_flights_at4 = self._get_cfa_lead_ca_co_flights(cfa_type, lead_type, lead_flight, carrier_flight, coupling_flight, o_length, drive_head)
         # Get all the teeth and pilot items
         teeth_and_pilot_at5 = self._get_cfa_coupling_teeth_at5(diameter, centre_tube, lead_type, teeth, pilot)
         cfa_tube_gusset_at7 = self._get_cfa_tube_gusset_at7(centre_tube, drive_head)
 
-        id_match = re.search(r'OD(\d+)', centre_tube)
-        id_value = int(id_match.group(1)) if id_match else 0
-
-        profiling = [(f"Profiling - CFA Single Cut {diameter}mm Diameter x Flight - OD280 ID{id_value} P330 T32 RH", 1)]
+        # Profiling uses the lead flight product name
+        profiling_name = f"Profiling - CFA Single Cut {diameter}mm Diameter x {lead_flight}" if lead_flight else ""
+        profiling = [(profiling_name, 1)] if profiling_name else []
         # We combine all components based on lead type
         combination = [
             *base_coupling_at2,
@@ -899,8 +903,8 @@ class ProductProduct(models.Model):
             "MAIT200 Coupling": "MAIT200 Coupling - Female",
             "SW80 Coupling": "TB80/SW80 Coupling - Female",
             "SW110 Coupling": "SW110 Female Coupling",
-            "SW150 EMDE Coupling": "SW150 Bauer Female Octagon Coupling",
-            "SW150 Bauer Coupling": "SW150 EMDE Female",
+            "SW150 EMDE Coupling": "SW150 EMDE Female",
+            "SW150 Bauer Coupling": "SW150 Bauer Coupling - Female",
             "SW175 Coupling": "SW175 Coupling - Female",
             "SW200 Coupling": "SW200 Female Coupling",
             "SW250 Coupling": "SW250 Female Coupling",
@@ -939,8 +943,8 @@ class ProductProduct(models.Model):
             "MAIT200 Coupling": "MAIT200 Coupling - Male",
             "SW80 Coupling": "TB80/SW80 Coupling - Male",
             "SW110 Coupling": "SW110 Male Coupling",
-            "SW150 EMDE Coupling": "SW150 Bauer Male Coupling",
-            "SW150 Bauer Coupling": "SW150 EMDE Male",
+            "SW150 EMDE Coupling": "SW150 EMDE Female",
+            "SW150 Bauer Coupling": "SW150 Bauer Coupling - Female",
             "SW175 Coupling": "SW175 Coupling - male",
             "SW200 Coupling": "SW200 Male Coupling",
             "SW250 Coupling": "SW250 Male Coupling",
@@ -1083,7 +1087,7 @@ class ProductProduct(models.Model):
 
         components = [c for c in components if c and len(c) >= 2 and c[0] and c[1]]
         for component_name, qty in components:
-            uom = uom_meter if any(x in component_name for x in ['Hollow Bar', 'Pipe', 'Pilot Support']) else unit
+            uom = uom_meter if any(x in component_name for x in ['Hollow Bar', 'Pipe']) else unit
             component = self.env['product.product'].search([('name', '=ilike', component_name)], limit=1)
             if not component:
                 component = self.env['product.product'].create({
@@ -1342,8 +1346,8 @@ class ProductProduct(models.Model):
 
         def _get_teeth_qty(mm):
             qty = (dia - od - 10) / mm * 2
-            rounded = round(qty)
-            return rounded if rounded % 2 == 0 else rounded + 1
+            # Round to nearest even number
+            return round(qty / 2) * 2
 
         teeth_map = {
             '22mm BC05 Teeth': [
@@ -1351,14 +1355,9 @@ class ProductProduct(models.Model):
                 ('BHR176 - 22mm Block Tooth Holder', _get_teeth_qty(42)),
                 ('BA13 - Weld on Button Carbide', _get_teeth_qty(42) / 2)
             ],
-            '25mm BTK03 Teeth w/ Flat Back Holder': [
+            '25mm BTK03 Teeth': [
                 ('BTK03TB - 25mm Shank Teeth. 12.7mm carbide.', _get_teeth_qty(44)),
                 ('TB25 - 25mm Flat Back Holder', _get_teeth_qty(44)),
-                ('BA13 - Weld on Button Carbide', _get_teeth_qty(42) / 2)
-            ],
-            '25mm BTK03 Teeth w/ Block Holder': [
-                ('BTK03TB - 25mm Shank Teeth. 12.7mm carbide.', _get_teeth_qty(44)),
-                ('BHR31 - 25mm Block Tooth Holder', _get_teeth_qty(44)),
                 ('BA13 - Weld on Button Carbide', _get_teeth_qty(42) / 2)
             ],
             '38/30 BKH80 Teeth': [
@@ -1403,13 +1402,9 @@ class ProductProduct(models.Model):
                 ('BC05TB - 22mm Shank Teeth', _get_teeth_qty(42)),
                 ('BHR176 - 22mm Block Tooth Holder', _get_teeth_qty(42) - 4)
             ],
-            '25mm BTK03 Teeth w/ Flat Back Holder': [
+            '25mm BTK03 Teeth': [
                 ('BTK03TB - 25mm Shank Teeth. 12.7mm carbide.', _get_teeth_qty(44)),
                 ('TB25 - 25mm Flat Back Holder', _get_teeth_qty(44) - 4)
-            ],
-            '25mm BTK03 Teeth w/ Block Holder': [
-                ('BTK03TB - 25mm Shank Teeth. 12.7mm carbide.', _get_teeth_qty(44)),
-                ('BHR31 - 25mm Block Tooth Holder', _get_teeth_qty(44) - 4)
             ],
             '38/30 BKH80 Teeth': [
                 ('BKH80TB - Step shank 38/30mm teeth. 17.4mm Carbide - hardfaced', _get_teeth_qty(66)),
@@ -1444,12 +1439,22 @@ class ProductProduct(models.Model):
 
         return _teeth + _pilot
 
-    def _get_cfa_coupling_ctube_at3(self, center_tube, inner_tube):
-        #TODO: Ask the formula to get the inner tube length(metre) for the spacer ring
-        """
-        Return: list of tuples (item_name, qty) for Elbow, Pipe Extension, Spacer Ring, CFA Plug, CFA Plug Holder
+    def _get_cfa_coupling_ctube_at3(self, center_tube, inner_tube, drive_head='', cfa_type=''):
+        """Return list of tuples for Elbow, Pipe Extension, Spacer Ring, CFA Plug, CFA Holder.
+
+        Not applicable for 75mm-130mm Square Drive Heads.
+        CFA Plug Holder excluded for Intermediate and Extension types.
         Elbow is always first in the list.
         """
+        excluded_drive_heads = (
+            'Drive Head - 75mm Square',
+            'Drive Head - 100mm Square',
+            'Drive Head - 110mm Square',
+            'Drive Head - 130mm Square',
+            'Drive Head - 130mm Square DIGGA',
+        )
+        if drive_head in excluded_drive_heads:
+            return []
         CFA_COUPLING_CONFIG = {
             # Center tube only (inner_tube = None/'-')
             ('Hollow bar - OD80mm ID60mm', None): {
@@ -1570,6 +1575,12 @@ class ProductProduct(models.Model):
             result = []
             component_order = ['elbow', 'pipe_extension', 'spacer_ring', 'cfa_plug', 'cfa_plug_holder']
             for component in component_order:
+                # CFA Plug Holder excluded for Intermediate and Extension
+                if component == 'cfa_plug_holder' and cfa_type in ('Intermediate', 'Extension'):
+                    continue
+                # CFA Plug and CFA Plug Holder excluded for Extension
+                if component in ('cfa_plug', 'cfa_plug_holder') and cfa_type == 'Extension':
+                    continue
                 if component in config:
                     result.append(config[component])
             return result
@@ -1624,7 +1635,8 @@ class ProductProduct(models.Model):
             Return center tube qty based on a formula.
             Final output is in meters (rounded up to 1 decimal place).
             """
-            with_pipe_extension = ['Hollow Bar - OD150mm ID120mm', 'Hollow Bar - OD170mm ID140mm']
+            # Centre tubes that have a pipe extension (0.25m) per AT3 table
+            with_pipe_extension = ['Hollow Bar - OD152mm WT 26mm', 'Hollow Bar - OD168mm WT 21.5mm']
             excluded_lead_type = ['Dual Rock', 'Taper Rock', 'Clay/Shale', 'Single Cut']
 
             c_qty = 0
@@ -1764,8 +1776,8 @@ class ProductProduct(models.Model):
             "MAIT200 Coupling": ["MAIT200 Coupling - Female", 304, 10],
             "TB2/TB80/SW80 Coupling": ["TB80/SW80 Coupling - Female", 148, 0],
             "SW110 Coupling (TB3)": ["SW110 Female Coupling", 170, 0],
-            "SW150 Bauer Coupling": ["SW150 Bauer Female Octagon Coupling", 258, 0],
-            "SW150 EMDE Coupling": ["SW150 Bauer Female Octagon Coupling", 225, 0],
+            "SW150 Bauer Coupling": ["SW150 Bauer Coupling - Female", 304, 30],
+            "SW150 EMDE Coupling": ["SW150 EMDE Female", 225, 100],
             "SW175 Coupling": ["SW150 EMDE Female", 400, 0],
             "SW190 Coupling": ["SW175 Coupling - Female", 400, 10],
             "SW200 Coupling": ["SW200 Female Coupling", 446, 10],
@@ -1799,8 +1811,8 @@ class ProductProduct(models.Model):
             "MAIT200 Coupling": ["MAIT200 Coupling - Male", 55, 10],
             "SW80 Coupling": ["TB80/SW80 Coupling - Male", 20, 0],
             "SW110 Coupling": ["SW110 Male Coupling", 35, 0],
-            "SW150 EMDE Coupling": ["SW150 Bauer Male Coupling", 50, 0],
-            "SW150 Bauer Coupling": ["SW150 EMDE Male", 100, 0],
+            "SW150 EMDE Coupling": ["SW150 EMDE Female", 50, 0],
+            "SW150 Bauer Coupling": ["SW150 Bauer Coupling - Male", 100, 0],
             "SW175 Coupling": ["SW175 Coupling - male", 85, 10],
             "SW190 Coupling": ["SW190 Coupling - Male", 85, 10],
             "SW200 Coupling": ["SW200 Male Coupling", 145, 10],
@@ -1870,42 +1882,29 @@ class ProductProduct(models.Model):
                 flight_pt, flight_od, center_tube, rotation
             )
 
-    def _get_cfa_lead_ca_co_flights(self, cfa_type, lead_type, diameter, center_tube, l_flight_od, l_flight_pt, c_flight_od, c_flight_pt, co_flight_id, rotation, o_length, drive_head, override_bom):
+    def _get_cfa_lead_ca_co_flights(self, cfa_type, lead_type, lead_flight, carrier_flight, coupling_flight, o_length, drive_head):
+        """Return flight components with quantities.
+
+        Flight names come pre-resolved from _parse_bp_flight_attr.
+        No override BOM logic needed.
         """
-        Returns a list of tuples (flight_string, quantity) for non-stock lead and carrier flights.
-        """
-        # Build flight strings for lead, carrier, and coupling
-        lead_flight_str = self._get_cfa_flight_combination(l_flight_od, l_flight_pt, False, diameter, center_tube, rotation)
-        carrier_flight_str = self._get_cfa_flight_combination(c_flight_od, c_flight_pt, False, diameter, center_tube, rotation)
-        coupling_flight_str = self._get_cfa_flight_combination(l_flight_od, l_flight_pt, True, diameter, co_flight_id, rotation)
-
-        l_flight = bool(lead_flight_str)
-        ca_flight = bool(carrier_flight_str)
-        co_flight = bool(coupling_flight_str)
-
-        # Only validate if the user selected flight attributes but no match was found
-        # Skip validation entirely if attributes were left empty
-        l_selected = bool(l_flight_od and l_flight_pt)
-        ca_selected = bool(c_flight_od and c_flight_pt)
-        co_selected = bool(l_flight_od and l_flight_pt and co_flight_id)
-        self._check_flight_validation(
-            l_flight, ca_flight, co_flight,
-            l_selected, ca_selected, co_selected,
-            override_bom,
-        )
-
-        # Get the qty of the lead flight
         lead_qty = self._get_cfa_lead_flight_qty(cfa_type, lead_type)
-        ca_qty, co_qty = self._get_cfa_carrier_coupling_flight_qty(cfa_type, lead_flight_str, carrier_flight_str, coupling_flight_str, o_length, drive_head)
-        _none = (None, 0)
+        ca_qty, co_qty = self._get_cfa_carrier_coupling_flight_qty(
+            cfa_type, lead_flight or '', carrier_flight or '',
+            coupling_flight or '', o_length, drive_head,
+            carrier_flight or '', coupling_flight or '',
+        )
+        # Combine flights with the same product name into one BOM line
+        flight_qtys = {}
+        for name, qty in [
+            (lead_flight, lead_qty),
+            (carrier_flight, abs(ca_qty)),
+            (coupling_flight, abs(co_qty)),
+        ]:
+            if name and qty:
+                flight_qtys[name] = flight_qtys.get(name, 0) + qty
 
-        lst = [
-            (lead_flight_str, lead_qty) if l_flight else _none,
-            (carrier_flight_str, abs(ca_qty)) if ca_flight else _none,
-            (coupling_flight_str, abs(co_qty)) if co_flight else _none,
-        ]
-        components = [c for c in lst if c and c[0] and c[1]]
-        return components
+        return [(name, qty) for name, qty in flight_qtys.items()]
 
     def _check_flight_validation(self, l_flight, ca_flight, co_flight,
                                  l_selected, ca_selected, co_selected,
@@ -1940,26 +1939,32 @@ class ProductProduct(models.Model):
             lead_qty = 2
         return lead_qty
 
-    def _get_cfa_carrier_coupling_flight_qty(self, cfa_type, l_flight, ca_flight, co_flight, overall_length, drive_head):
-        """ 
-        We calculate the stock or non-stock carrier flight qty
+    def _get_cfa_carrier_coupling_flight_qty(self, cfa_type, l_flight, ca_flight, co_flight, overall_length, drive_head, c_flight_pt='', co_flight_id=''):
+        """Calculate carrier and coupling flight quantities.
+
+        When the coupling product is unavailable (override BOM), the
+        coupling qty is still calculated from the carrier pitch attribute
+        so that the carrier qty correctly accounts for the coupling space.
         """
         def _get_pitch(res):
             p_match = re.search(r'P(\d+)', res)
             r_match = re.search(r'R(\d+\.\d+)', res)
-
             pitch = int(p_match.group(1)) if p_match else 1
             turns = float(r_match.group(1)) if r_match else 1
-
             return pitch, turns
 
         l_pitch = l_no_turn = ca_pitch = ca_no_turn = co_pitch = co_no_turn = 0
 
-        # Then handle cases without coupling
         if l_flight or ca_flight or co_flight:
             l_pitch, l_no_turn = _get_pitch(l_flight)
             ca_pitch, ca_no_turn = _get_pitch(ca_flight)
             co_pitch, co_no_turn = _get_pitch(co_flight)
+
+        # Fallback: when coupling product is unavailable but coupling ID
+        # was selected, use carrier pitch attribute for coupling qty calc
+        # so carrier qty still considers the coupling space
+        if not co_flight and co_flight_id and c_flight_pt:
+            co_pitch, co_no_turn = _get_pitch(c_flight_pt)
 
         # Get the height of female coupling
         female = self._get_cfa_female_coupling(drive_head)
@@ -1967,7 +1972,9 @@ class ProductProduct(models.Model):
         o_length = re.search(r'([\d.]+)\s*m\b', overall_length)
         o_length_mm = float(o_length.group(1)) if o_length else 0
 
-        co_qty = self._get_cfa_coflight_qty(female_height, co_pitch, co_no_turn, co_flight)
+        # Calculate coupling qty — uses fallback pitch even when product unavailable
+        co_has_attrs = bool(co_flight or (co_flight_id and c_flight_pt))
+        co_qty = self._get_cfa_coflight_qty(female_height, co_pitch, co_no_turn, co_has_attrs)
         ca_qty = self._get_cfa_caflight_qty(cfa_type, l_pitch, l_no_turn, ca_pitch, ca_no_turn, co_qty, o_length_mm)
 
         return ca_qty, co_qty
@@ -1992,12 +1999,17 @@ class ProductProduct(models.Model):
             return 0
         return 0
 
-    def _get_cfa_coflight_qty(self, female_height, co_pitch, co_no_turn, co_flight):
-        if not co_flight:
+    def _get_cfa_coflight_qty(self, female_height, co_pitch, co_no_turn, co_has_attrs):
+        """Calculate coupling flight qty.
+
+        co_has_attrs is True when coupling attributes are selected
+        (either the product exists or coupling ID + carrier pitch are set).
+        """
+        if not co_has_attrs:
             return 0
         if not co_pitch or not co_no_turn:
             return 0
 
         qty = female_height / (co_pitch * co_no_turn)
-        qty = math.floor(qty * 2) / 2
+        qty = round(qty * 2) / 2  # round to nearest 0.5
         return qty
