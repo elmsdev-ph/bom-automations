@@ -514,7 +514,7 @@ class ProductProduct(models.Model):
             return self._get_bp_clay_shale(*args)
         else:
             return self._get_bp_blade(*args)
-
+    
     def _get_base_plate(self, dhead):
         exclude_dhead = {
             'Drive Head - 65mm Round', 'Drive Head - 65mm Square', 'Drive Head - 75mm Square',
