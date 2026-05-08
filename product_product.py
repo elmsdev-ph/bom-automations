@@ -436,11 +436,12 @@ class ProductProduct(models.Model):
             self._create_bom_components(product, reference, components)
 
     def _parse_bp_flight_attr(self, attr_value):
-        """Parse bored pile flight attribute into a product name.
+        """Parse bored pile / CFA flight attribute into a product name.
 
         Attribute values are like:
           "Lead Flight - OD590 ID273 P400 T20 RH"
           "Carrier Flight - OD100 ID51 P100 T8 RH (1m Long)"
+          "Coupling Flight - OD300 ID100 P200 T15 RH"
           "N/A"
 
         Returns the product name like "Flight - OD590 ID273 P400 T20 RH"
@@ -448,9 +449,9 @@ class ProductProduct(models.Model):
         """
         if not attr_value or attr_value.strip().lower() == 'n/a':
             return ''
-        # Strip "Lead Flight - " or "Carrier Flight - " prefix → "Flight - ..."
+        # Strip "Lead/Carrier/Coupling Flight - " prefix → "Flight - ..."
         cleaned = re.sub(
-            r'^(?:Lead|Carrier)\s+Flight\s*-\s*',
+            r'^(?:Lead|Carrier|Coupling)\s+Flight\s*-\s*',
             'Flight - ',
             attr_value.strip(),
         )
@@ -514,7 +515,7 @@ class ProductProduct(models.Model):
             return self._get_bp_clay_shale(*args)
         else:
             return self._get_bp_blade(*args)
-    
+
     def _get_base_plate(self, dhead):
         exclude_dhead = {
             'Drive Head - 65mm Round', 'Drive Head - 65mm Square', 'Drive Head - 75mm Square',
@@ -888,7 +889,7 @@ class ProductProduct(models.Model):
         """Calculate carrier flight quantity."""
         type_lower = type.strip().lower()
         auger_types = (
-            'dual rock', 'taper rock',
+            'dual rock', 'taper rock', 'taper rock aggressive',
             'zed 25mm', 'zed 32mm', 'zed 40mm', 'zed 50mm',
         )
         ar150_teeth = (
@@ -3343,7 +3344,20 @@ class ProductProduct(models.Model):
             # Find the index of the 1st component
             index = next(i for i, component in enumerate(components) if component == (f"Profiling - {prof_combination}", 1.0))
             gusset_label = "Core Barrel 22mm Teeth" if teeth in ['22mm Extra Teeth', '22mm Teeth'] else "Core Barrel"
-            components.insert(index + 1, (f"Gusset {drive_head_attr} Drive x {diameter} - {gusset_label}", 4.0))
+            core_barrel_gusset_map = {
+                '75mm Square Head': '75mm Drive',
+                '100mm Square Head': '100mm Drive',
+                '110mm Square Head': '110mm Drive',
+                '130mm Square Head': '130mm Drive',
+                '130mm Digga Square Head': '130mm Drive',
+                '150mm Square Head': '150mm Drive',
+                '150mm IMT Square Head': '150mm Drive',
+                '200mm Bauer Square Head': '200mm Bauer Drive',
+                '200mm Mait Square Head': '200mm MAIT Drive',
+                '4" Lo Drill Head': '4" Lo Drill Drive',
+            }
+            gusset_drive = core_barrel_gusset_map.get(drive_head, f"{drive_head_attr} Drive")
+            components.insert(index + 1, (f"Gusset {gusset_drive} x {diameter} - {gusset_label}", 4.0))
 
             # Find the index of the 2nd component
             index = next(i for i, component in enumerate(components) if component == (f"{drive_head_name}", 1.0))
