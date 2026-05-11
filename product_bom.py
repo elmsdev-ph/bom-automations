@@ -90,6 +90,9 @@ class ProductProduct(models.Model):
         elbow = ctube_at3[0][0] if ctube_at3 else ''
         zed_center = "" # leave empty; only applicable for zed type
         base_coupling_at2 = self._get_cfa_coupling_dhead_at2(cfa_type, lead_type, drive_head, centre_tube, inner_tube, pilot, zed_center, elbow, o_length)
+        # Override Spacer Ring qty using actual inner tube length from AT2
+        inn_tube_qty = base_coupling_at2[4][1] if len(base_coupling_at2) > 4 else 0
+        ctube_at3 = self._apply_cfa_spacer_ring_qty(ctube_at3, inn_tube_qty)
         # Return: Items for lead, carrier, and coupling flights w/ qty
         cfa_stock_flights_at4 = self._get_cfa_lead_ca_co_flights(cfa_type, lead_type, lead_flight, carrier_flight, coupling_flight, o_length, drive_head)
         # Get all the teeth and pilot items
@@ -117,9 +120,12 @@ class ProductProduct(models.Model):
         elbow = ctube_at3[0][0] if ctube_at3 else ''  # Get the elbow item for mapping of inner tube height
         zed_center = "" # leave empty; only applicable for zed type
         base_coupling_at2 = self._get_cfa_coupling_dhead_at2(cfa_type, lead_type, drive_head, centre_tube, inner_tube, pilot, zed_center, elbow, o_length)
+        # Override Spacer Ring qty using actual inner tube length from AT2
+        inn_tube_qty = base_coupling_at2[4][1] if len(base_coupling_at2) > 4 else 0
+        ctube_at3 = self._apply_cfa_spacer_ring_qty(ctube_at3, inn_tube_qty)
         # Return: Items for lead, carrier, and coupling flights w/ qty
         cfa_stock_flights_at4 = self._get_cfa_lead_ca_co_flights(cfa_type, lead_type, lead_flight, carrier_flight, coupling_flight, o_length, drive_head)
-        s_ring = ctube_at3[3] if len(ctube_at3) >= 4 else (None, 0)
+        s_ring = next(((name, qty) for name, qty in ctube_at3 if name and 'Spacer Ring' in name), (None, 0))
         s_ring_lst = [s_ring]
         # We combine all components based on lead type
         combination = [
@@ -139,8 +145,11 @@ class ProductProduct(models.Model):
         elbow = ctube_at3[0][0] if ctube_at3 else ''# Get the elbow item for mapping of inner tube height
         zed_center = "" # leave empty; only applicable for zed type
         base_coupling_at2 = self._get_cfa_coupling_dhead_at2(cfa_type, lead_type, drive_head, centre_tube, inner_tube, pilot, zed_center, elbow, o_length)
-        # We combine all components based on lead type 
-        s_ring = ctube_at3[3] if len(ctube_at3) >= 4 else (None, 0)
+        # Override Spacer Ring qty using actual inner tube length from AT2
+        inn_tube_qty = base_coupling_at2[4][1] if len(base_coupling_at2) > 4 else 0
+        ctube_at3 = self._apply_cfa_spacer_ring_qty(ctube_at3, inn_tube_qty)
+        # We combine all components based on lead type
+        s_ring = next(((name, qty) for name, qty in ctube_at3 if name and 'Spacer Ring' in name), (None, 0))
         s_ring_lst = [s_ring]
 
         combination = [
@@ -161,6 +170,9 @@ class ProductProduct(models.Model):
         zed_center_at6 = self._get_cfa_zed_center_at6(centre_tube, diameter)
         zed_center = zed_center_at6[0][0] if zed_center_at6 else ''
         base_coupling_at2 = self._get_cfa_coupling_dhead_at2(cfa_type, lead_type, drive_head, centre_tube, inner_tube, pilot, zed_center, elbow, o_length)
+        # Override Spacer Ring qty using actual inner tube length from AT2
+        inn_tube_qty = base_coupling_at2[4][1] if len(base_coupling_at2) > 4 else 0
+        ctube_at3 = self._apply_cfa_spacer_ring_qty(ctube_at3, inn_tube_qty)
         # Return: Items for lead, carrier, and coupling flights w/ qty
         cfa_stock_flights_at4 = self._get_cfa_lead_ca_co_flights(cfa_type, lead_type, lead_flight, carrier_flight, coupling_flight, o_length, drive_head)
         # Get all the teeth and pilot items
@@ -188,6 +200,9 @@ class ProductProduct(models.Model):
         elbow = ctube_at3[0][0] if ctube_at3 else ''  # Get the elbow item for mapping of inner tube height
         zed_center = "" # leave empty; only applicable for zed type
         base_coupling_at2 = self._get_cfa_coupling_dhead_at2(cfa_type, lead_type, drive_head, centre_tube, inner_tube, pilot, zed_center, elbow, o_length)
+        # Override Spacer Ring qty using actual inner tube length from AT2
+        inn_tube_qty = base_coupling_at2[4][1] if len(base_coupling_at2) > 4 else 0
+        ctube_at3 = self._apply_cfa_spacer_ring_qty(ctube_at3, inn_tube_qty)
         # Return: Items for lead, carrier, and coupling flights w/ qty
         cfa_stock_flights_at4 = self._get_cfa_lead_ca_co_flights(cfa_type, lead_type, lead_flight, carrier_flight, coupling_flight, o_length, drive_head)
         # Get all the teeth and pilot items
@@ -214,11 +229,11 @@ class ProductProduct(models.Model):
         """
             Create a BOM component for High Tensile Adapter
         """
-        if product.product_tmpl_id.name != 'High Tensile Adapter':
+        tmpl_name = (product.product_tmpl_id.name or '').strip().lower()
+        if tmpl_name != 'high tensile adapter':
             return
 
         components = self._get_high_tensile_adapter_components(product)
-        # raise ValidationError(f"tensile.. {components}")
         reference = product.display_name
         self._create_bom_components(product, reference, components)
 
@@ -230,25 +245,25 @@ class ProductProduct(models.Model):
         reducer = attributes.get('Reducer', '')
         lift_lug = attributes.get('Lift Lug', '')
 
-        components = []
-
         _drive1, _drive2, _base_plate = self._get_high_tensile_drive_head(from_drive, to_drive, type)
         _stiff_ring = self._get_stiffening_ring_for_tensile_adapter(_drive1, _drive2, type)
-        liftlug = re.match(r'^\s*(\d+(?:\.\d+)?)', lift_lug)
-        lift_lug_qty = int(liftlug.group(1)) if liftlug else 0.0
-        _liftlug = ('Lift lug', lift_lug_qty) if lift_lug else (None, 0)
+
+        liftlug_match = re.match(r'^\s*(\d+)', lift_lug or '')
+        lift_lug_qty = int(liftlug_match.group(1)) if liftlug_match else 0
+        _liftlug = ('Lift lug', lift_lug_qty) if lift_lug_qty else (None, 0)
+
         c_reducer = self._get_hta_reducer(reducer)
-        _reducer = (c_reducer, 1)
+        _reducer = (c_reducer, 1) if c_reducer else (None, 0)
         _none = (None, 0)
         lst = [
             _drive1,
             _drive2,
             _base_plate or _none,
-            _reducer or _none,
+            _reducer,
             _stiff_ring or _none,
-            _liftlug
+            _liftlug,
         ]
-        components = [x for x in lst if x[0]]
+        components = [x for x in lst if x and x[0]]
         return components
 
     def _get_hta_reducer(self, reducer):
@@ -259,7 +274,13 @@ class ProductProduct(models.Model):
             'Reducer - 350NB to 200NB': 'Concentric reducer - 350 NB to 200 NB',
             'Reducer - 500NB to 300NB': 'Concentric reducer - 500 NB to 300 NB',
         }
-        return reducer_map.get(reducer, '')
+        if not reducer:
+            return ''
+        key_norm = reducer.strip().lower()
+        for k, v in reducer_map.items():
+            if k.strip().lower() == key_norm:
+                return v
+        return ''
 
     def _get_hta_base_plate(self, drive_head):
         base_plate_map = {
@@ -273,7 +294,13 @@ class ProductProduct(models.Model):
             'Drive Head - 200mm Square Bauer': 'Base Plate - 200mm Head',
             'Drive Head - 200mm Square MAIT': 'Base Plate - 200mm Head',
         }
-        return base_plate_map.get(drive_head, '')
+        if not drive_head:
+            return ''
+        key_norm = drive_head.strip().lower()
+        for k, v in base_plate_map.items():
+            if k.strip().lower() == key_norm:
+                return v
+        return ''
 
     def _create_bom_for_extension_bar(self, product):
         """
@@ -960,32 +987,43 @@ class ProductProduct(models.Model):
             "200mm Square Drive MAIT": "200mm MAIT Square Stub",
         }
 
-        ff_fdrive = self._get_mm_number(female_map.get(from_drive))
-        ff_tdrive = self._get_mm_number(female_map.get(to_drive))
+        female_ci = {k.strip().lower(): v for k, v in female_map.items()}
+        male_ci = {k.strip().lower(): v for k, v in male_map.items()}
+
+        fd = (from_drive or '').strip().lower()
+        td = (to_drive or '').strip().lower()
+        type_norm = (type or '').strip().lower()
+
+        from_female = female_ci.get(fd)
+        from_male = male_ci.get(fd)
+        to_female = female_ci.get(td)
+        to_male = male_ci.get(td)
+
         ff_dhead = ""
-        if ff_fdrive > ff_tdrive:
-            ff_dhead = female_map.get(from_drive)
-        else:
-            ff_dhead = female_map.get(to_drive)
+        if type_norm == 'female to female':
+            ff_fdrive = self._get_mm_number(from_female)
+            ff_tdrive = self._get_mm_number(to_female)
+            ff_dhead = from_female if ff_fdrive > ff_tdrive else to_female
 
         type_map = {
-            'Female to Female': (female_map.get(from_drive), female_map.get(to_drive), self._get_hta_base_plate(ff_dhead)),
-            'Male to Male': (male_map.get(from_drive), male_map.get(to_drive), ''),
-            'Female to Male': (female_map.get(from_drive), male_map.get(to_drive), self._get_hta_base_plate(female_map.get(from_drive))),
-            'Male to Female': (male_map.get(from_drive), female_map.get(to_drive), self._get_hta_base_plate(female_map.get(to_drive))),
+            'female to female': (from_female, to_female, self._get_hta_base_plate(ff_dhead)),
+            'male to male': (from_male, to_male, ''),
+            'female to male': (from_female, to_male, self._get_hta_base_plate(from_female)),
+            'male to female': (from_male, to_female, self._get_hta_base_plate(to_female)),
         }
 
-        from_component, to_component, base_plate = type_map.get(type, (None, None, None))
+        from_component, to_component, base_plate = type_map.get(type_norm, (None, None, None))
 
-        result = []
         _none = (None, 0)
-
-        result.append((from_component, 1) if from_component else _none)
-        result.append((to_component, 1) if to_component else _none)
-        result.append((base_plate, 1) if base_plate else _none)
-        return result
+        return [
+            (from_component, 1) if from_component else _none,
+            (to_component, 1) if to_component else _none,
+            (base_plate, 1) if base_plate else _none,
+        ]
 
     def _get_mm_number(self, str):
+        if not str:
+            return 0
         fm_str = re.search(r'(\d+)mm', str)
         number = int(fm_str.group(1)) if fm_str else 0
         return number
@@ -1047,36 +1085,46 @@ class ProductProduct(models.Model):
             '75mm Head': 'Stiffening Ring - 75mm Head',
         }
 
+        matrix_ci = {
+            k.strip().lower(): {sk.strip().lower(): sv for sk, sv in v.items()}
+            for k, v in stiffening_matrix.items()
+        }
+
+        def _name(t):
+            return t[0] if t and t[0] else ""
+
+        type_norm = (coupling_type or '').strip().lower()
         stub_item = ""
         drive = ""
-        if coupling_type == 'Female to Male':
-            stub_item = drive_to[0] if drive_to else ""
-            drive = drive_from[0] if drive_from else ""
+        if type_norm == 'female to male':
+            stub_item = _name(drive_to)
+            drive = _name(drive_from)
+        elif type_norm == 'male to female':
+            stub_item = _name(drive_from)
+            drive = _name(drive_to)
 
-        if coupling_type == 'Male to Female':
-            stub_item = drive_from[0] if drive_from else ""
-            drive = drive_to[0] if drive_to else ""
+        if not drive:
+            return None
 
-        available = stiffening_matrix.get(drive)
+        available = matrix_ci.get(drive.strip().lower())
         dhead_75 = self._get_mm_number(drive)
 
         if dhead_75 == 75:
-            return (f"{ring_label_map['75mm Head']}", 1)
+            return (ring_label_map['75mm Head'], 1)
 
         if not available:
             return None
 
-        # Preferred stub if 'Stubb' is explicitly mentioned in drive_to
         preferred_stub = None
-        if 'stubb' in stub_item.lower() or 'stub' in stub_item.lower():
+        if 'stub' in stub_item.lower():
             match = re.search(r'(\d{2,3})mm', stub_item)
             if match:
                 preferred_stub = f"{match.group(1)}mm Stubb"
 
-        if preferred_stub and available.get(preferred_stub):
-            return (f"{ring_label_map[preferred_stub]}", 1)
+        if preferred_stub and available.get(preferred_stub.strip().lower()):
+            return (ring_label_map[preferred_stub], 1)
 
-        return (None, 0)
+        return None
 
     def _create_cfa_bom_components(self, product, reference, components):
         bom_lines = []
@@ -1349,21 +1397,25 @@ class ProductProduct(models.Model):
             # Round to nearest even number
             return round(qty / 2) * 2
 
+        # BA13 Weld on Button Carbide qty = Teeth QTY / 2, rounded to nearest even
+        def _weld_qty(teeth_qty):
+            return round(teeth_qty / 2 / 2) * 2
+
         teeth_map = {
             '22mm BC05 Teeth': [
                 ('BC05TB - 22mm Shank Teeth', _get_teeth_qty(42)),
                 ('BHR176 - 22mm Block Tooth Holder', _get_teeth_qty(42)),
-                ('BA13 - Weld on Button Carbide', _get_teeth_qty(42) / 2)
+                ('BA13 - Weld on Button Carbide', _weld_qty(_get_teeth_qty(42))),
             ],
             '25mm BTK03 Teeth': [
                 ('BTK03TB - 25mm Shank Teeth. 12.7mm carbide.', _get_teeth_qty(44)),
                 ('TB25 - 25mm Flat Back Holder', _get_teeth_qty(44)),
-                ('BA13 - Weld on Button Carbide', _get_teeth_qty(42) / 2)
+                ('BA13 - Weld on Button Carbide', _weld_qty(_get_teeth_qty(44))),
             ],
             '38/30 BKH80 Teeth': [
                 ('BKH80TB - Step shank 38/30mm teeth. 17.4mm Carbide - hardfaced', _get_teeth_qty(66)),
                 ('BHR38 - 38/30mm Block Tooth Holder', _get_teeth_qty(66)),
-                ('BA13 - Weld on Button Carbide', _get_teeth_qty(42) / 2)
+                ('BA13 - Weld on Button Carbide', _weld_qty(_get_teeth_qty(66))),
             ]
         }
         return teeth_map.get(teeth, [])
@@ -1439,12 +1491,36 @@ class ProductProduct(models.Model):
 
         return _teeth + _pilot
 
+    def _get_cfa_spacer_ring_qty(self, inner_tube_length_m):
+        """Return CFA Spacer Ring qty based on Inner Tube length L (metres).
+
+        Per Attachment #3:
+          L<=2 -> 2; 2<L<=4 -> 3; 4<L<=6 -> 4; 6<L<=8 -> 5; 8<L<=10 -> 6; 10<L<=12 -> 7
+        Beyond 12m, the pattern extends: qty = ceil(L/2) + 1.
+        Returns 0 when length is missing or non-positive (caller keeps default qty).
+        """
+        if not inner_tube_length_m or inner_tube_length_m <= 0:
+            return 0
+        return math.ceil(inner_tube_length_m / 2) + 1
+
+    def _apply_cfa_spacer_ring_qty(self, ctube_at3, inner_tube_length_m):
+        """Override Spacer Ring qty in ctube_at3 list using inner tube length L (metres)."""
+        qty = self._get_cfa_spacer_ring_qty(inner_tube_length_m)
+        if not qty:
+            return ctube_at3
+        return [
+            (name, qty) if name and 'Spacer Ring' in name else (name, q)
+            for name, q in ctube_at3
+        ]
+
     def _get_cfa_coupling_ctube_at3(self, center_tube, inner_tube, drive_head='', cfa_type=''):
         """Return list of tuples for Elbow, Pipe Extension, Spacer Ring, CFA Plug, CFA Holder.
 
         Not applicable for 75mm-130mm Square Drive Heads.
         CFA Plug Holder excluded for Intermediate and Extension types.
         Elbow is always first in the list.
+        Spacer Ring qty is the default from the config; callers should override it
+        via `_apply_cfa_spacer_ring_qty(ctube_at3, inn_tube_qty)` after AT2 runs.
         """
         excluded_drive_heads = (
             'Drive Head - 75mm Square',
