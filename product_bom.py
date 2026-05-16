@@ -1850,11 +1850,11 @@ class ProductProduct(models.Model):
             "Llamada Coupling": ["Llamada Coupling - Female", 279, 0],
             "MAIT175 Coupling": ["MAIT175 Coupling - Female", 240, 10],
             "MAIT200 Coupling": ["MAIT200 Coupling - Female", 304, 10],
-            "TB2/TB80/SW80 Coupling": ["TB80/SW80 Coupling - Female", 148, 0],
-            "SW110 Coupling (TB3)": ["SW110 Female Coupling", 170, 0],
-            "SW150 Bauer Coupling": ["SW150 Bauer Coupling - Female", 304, 30],
-            "SW150 EMDE Coupling": ["SW150 EMDE Female", 225, 100],
-            "SW175 Coupling": ["SW150 EMDE Female", 400, 0],
+            "TB80/SW80 Coupling": ["TB80/SW80 Coupling - Female", 148, 0],
+            "SW110 Coupling": ["SW110 Female Coupling", 170, 0],
+            "SW150 Bauer Coupling": ["SW150 Bauer Coupling - Female", 258, 0],
+            "SW150 EMDE Coupling": ["SW150 EMDE Female", 225, 0],
+            "SW175 Coupling": ["SW150 EMDE Female", 400, 10],
             "SW190 Coupling": ["SW175 Coupling - Female", 400, 10],
             "SW200 Coupling": ["SW200 Female Coupling", 446, 10],
             "SW250 Coupling": ["SW250 Female Coupling", 585, 10],
@@ -1885,10 +1885,10 @@ class ProductProduct(models.Model):
             "Llamada Coupling": ["Llamada Coupling - Male", 41, 0],
             "MAIT175 Coupling": ["MAIT175 Coupling - Male", 65, 10],
             "MAIT200 Coupling": ["MAIT200 Coupling - Male", 55, 10],
-            "SW80 Coupling": ["TB80/SW80 Coupling - Male", 20, 0],
+            "TB80/SW80 Coupling": ["TB80/SW80 Coupling - Male", 20, 0],
             "SW110 Coupling": ["SW110 Male Coupling", 35, 0],
-            "SW150 EMDE Coupling": ["SW150 EMDE Female", 50, 0],
-            "SW150 Bauer Coupling": ["SW150 Bauer Coupling - Male", 100, 0],
+            "SW150 EMDE Coupling": ["SW150 EMDE Male", 100, 0],
+            "SW150 Bauer Coupling": ["SW150 Bauer Coupling - Male", 50, 0],
             "SW175 Coupling": ["SW175 Coupling - male", 85, 10],
             "SW190 Coupling": ["SW190 Coupling - Male", 85, 10],
             "SW200 Coupling": ["SW200 Male Coupling", 145, 10],
@@ -2089,3 +2089,4 @@ class ProductProduct(models.Model):
         qty = female_height / (co_pitch * co_no_turn)
         qty = round(qty * 2) / 2  # round to nearest 0.5
         return qty
+ 
